@@ -19,6 +19,14 @@ pub struct Args {
     #[arg(long, default_value_t = DEFAULT_CHANELLS_SIZE)]
     pub channel_size: usize,
 
+    /// Total percentage cropped from each frame dimension, split across opposite edges.
+    #[arg(long, value_parser = clap::value_parser!(u8).range(1..100))]
+    pub crop_percent: Option<u8>,
+
+    /// Display output FPS as a GStreamer video overlay.
+    #[arg(long, global = true, default_value_t = false)]
+    pub show_fps: bool,
+
     #[arg(long, global = true, required = false, default_value_t = default_log_level())]
     pub log_level: tracing::Level,
     /// Directory where all logs will be placed
@@ -44,6 +52,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         mode,
         backend,
         channel_size,
+        crop_percent,
+        show_fps,
         log_level,
         log_output_dir,
         json,
@@ -57,7 +67,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     let output = input.output();
-    runtime.block_on(run(mode, backend, channel_size, input, output))?;
+    runtime.block_on(run(
+        mode,
+        backend,
+        channel_size,
+        crop_percent,
+        show_fps,
+        input,
+        output,
+    ))?;
 
     while runtime.metrics().num_alive_tasks() != 0 {
         std::thread::sleep(Duration::from_millis(100));
@@ -97,7 +115,7 @@ pub fn setup_logger(
             .with_ansi(false)
             .with_file(is_show_file)
             .with_line_number(is_show_file)
-            .with_target(is_show_file);
+            .with_target(false);
         tracing_subscriber::registry()
             .with(fmt_layer)
             .with(filter)
@@ -111,7 +129,7 @@ pub fn setup_logger(
             .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stdout()))
             .with_file(is_show_file)
             .with_line_number(is_show_file)
-            .with_target(is_show_file);
+            .with_target(false);
         tracing_subscriber::registry()
             .with(fmt_layer)
             .with(filter)

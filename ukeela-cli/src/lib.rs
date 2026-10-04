@@ -2,6 +2,8 @@ use crate::{
     middleware::{
         chain::ProcessingChain,
         ema::{EmaMiddleware, config::EmaConfig},
+        feature_points::FeaturePointsMiddleware,
+        stabilization::{StabilizationConfig, StabilizationMiddleware},
     },
     pipeline::{
         FramePipeline,
@@ -40,28 +42,60 @@ pub async fn run(
     mode: StabilizationMode,
     backend: Backend,
     channel_size: usize,
+    crop_percent: Option<u8>,
+    show_fps: bool,
     input_cfg: GstInputConfig,
     output_cfg: GstOutputConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     gstreamer::init()?;
 
-    let chain = build_processing_chain(mode, backend)?;
+    let chain = build_processing_chain(mode, backend, crop_percent)?;
 
-    let (_pipeline, input_handle, output_handle) = FramePipeline::new(chain, channel_size);
-    let output_writer = GstOutputWriter::try_new(output_cfg)?;
+    let (mut pipeline, input_handle, output_handle) = FramePipeline::new(chain, channel_size);
+    let output_writer = GstOutputWriter::try_new(output_cfg, show_fps)?;
     let input_reader = GstInputReader::try_new(input_cfg)?;
 
     output_writer.start_output_thread(output_handle);
     input_reader.start_input_thread(input_handle);
 
-    tokio::signal::ctrl_c().await?;
+    let ctrl_c = tokio::signal::ctrl_c();
+    tokio::pin!(ctrl_c);
+    loop {
+        tokio::select! {
+            ctrl_c_result = &mut ctrl_c => {
+                match ctrl_c_result {
+                    Ok(()) => tracing::warn!("Ctrl+C received, initiating graceful shutdown..."),
+                    Err(err) => tracing::error!("Failed to listen for shutdown signal: {}", err),
+                }
+                break;
+            }
+
+            stats = pipeline.stats_rx.recv() => {
+                match stats {
+                    Ok(stats) => tracing::info!(
+                        frames_processed = stats.frames_processed,
+                        avg_fps = stats.avg_fps,
+                        dropped_frames = stats.dropped_frames,
+                        avg_processing_time_ms = stats.avg_processing_time_ms,
+                        middleware_processing_times_ms = ?stats.middleware_processing_times_ms,
+                        "Pipeline statistics for the last interval"
+                    ),
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                        tracing::warn!("Skipped {} pipeline statistics updates", skipped);
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        }
+    }
 
     Ok(())
 }
 
 fn build_processing_chain(
-    _mode: StabilizationMode,
+    mode: StabilizationMode,
     backend: Backend,
+    crop_percent: Option<u8>,
 ) -> Result<ProcessingChain, anyhow::Error> {
     let mut chain = ProcessingChain::new();
 
@@ -69,10 +103,19 @@ fn build_processing_chain(
         EmaConfig::default(),
     )));
 
-    // Add middleware based on config
-    // if use_stabilization {
-    //     // chain = chain.add_middleware(Arc::new(StabilizationMiddleware::new(config.mode)));
-    // }
+    chain = chain.add_middleware(middleware::MiddlewareDisplatch::FeaturePoints(
+        FeaturePointsMiddleware,
+    ));
+
+    if !matches!(mode, StabilizationMode::None) {
+        chain = chain.add_middleware(middleware::MiddlewareDisplatch::Stabilization(
+            StabilizationMiddleware::new(StabilizationConfig {
+                crop_percent,
+                ..StabilizationConfig::default()
+            })
+            .map_err(anyhow::Error::msg)?,
+        ));
+    }
 
     if [Backend::Vulkan, Backend::Auto].contains(&backend) {
         // chain = chain.add_middleware(Arc::new(GpuWarperMiddleware::new()?));

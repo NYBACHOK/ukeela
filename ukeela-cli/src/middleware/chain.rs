@@ -27,15 +27,40 @@ impl ProcessingChain {
 
         for mw in &self.middlewares {
             let mw_start = std::time::Instant::now();
-            frame = mw.process_async(frame).await?;
+            let frame_id = frame.id;
+            let processed = mw.process_async(frame).await;
+            let elapsed = mw_start.elapsed();
+            let middleware_name = mw.name();
 
-            // Record processing time
-            frame
-                .metadata
-                .write()
-                .expect(POISONED_LOCK_MSG)
-                .processing_time
-                .insert(mw.name(), mw_start.elapsed());
+            frame = match processed {
+                Ok(processed) => {
+                    processed
+                        .metadata
+                        .write()
+                        .expect(POISONED_LOCK_MSG)
+                        .processing_time
+                        .insert(middleware_name, elapsed);
+                    processed
+                }
+                Err(error) => {
+                    tracing::debug!(
+                        frame_id,
+                        middleware = middleware_name,
+                        processing_time_ms = elapsed.as_secs_f64() * 1000.0,
+                        failed = true,
+                        "Middleware processing failed"
+                    );
+                    return Err(error);
+                }
+            };
+
+            tracing::debug!(
+                frame_id,
+                middleware = middleware_name,
+                processing_time_ms = elapsed.as_secs_f64() * 1000.0,
+                failed = false,
+                "Middleware processing completed"
+            );
         }
 
         tracing::debug!(
