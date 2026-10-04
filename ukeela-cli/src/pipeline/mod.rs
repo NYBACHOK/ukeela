@@ -223,11 +223,6 @@ async fn process_thread(
                 }
                 continue;
             }
-            PacerAction::TooLate => {
-                pending_frame = None;
-                dropped += 1;
-                continue;
-            }
             PacerAction::Ready => {}
         }
 
@@ -349,7 +344,6 @@ fn replace_pending_with_latest(
 enum PacerAction {
     Ready,
     WaitUntil(std::time::Instant),
-    TooLate,
 }
 
 #[derive(Debug)]
@@ -376,12 +370,11 @@ impl FramePacer {
             return PacerAction::WaitUntil(deadline);
         }
 
-        if now.duration_since(deadline) >= self.period {
-            self.next_slot = Some(now + self.period);
-            return PacerAction::TooLate;
-        }
-
-        self.next_slot = Some(deadline + self.period);
+        self.next_slot = Some(if now.duration_since(deadline) >= self.period {
+            now + self.period
+        } else {
+            deadline + self.period
+        });
         PacerAction::Ready
     }
 }
@@ -432,5 +425,46 @@ impl Drop for FramePipeline {
     fn drop(&mut self) {
         self.ingress_closed.store(true, Ordering::Release);
         let _ = self.shutdown_tx.send(());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FramePacer, PacerAction};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn frame_pacer_waits_until_the_rate_limit_deadline() {
+        let start = Instant::now();
+        let period = Duration::from_millis(33);
+        let mut pacer = FramePacer::new(period);
+
+        assert_eq!(pacer.check(start), PacerAction::Ready);
+        assert_eq!(
+            pacer.check(start + Duration::from_millis(10)),
+            PacerAction::WaitUntil(start + period)
+        );
+        assert_eq!(pacer.check(start + period), PacerAction::Ready);
+        assert_eq!(
+            pacer.check(start + period + Duration::from_millis(1)),
+            PacerAction::WaitUntil(start + period * 2)
+        );
+    }
+
+    #[test]
+    fn frame_pacer_accepts_frames_after_a_long_input_gap() {
+        let start = Instant::now();
+        let period = Duration::from_millis(33);
+        let mut pacer = FramePacer::new(period);
+
+        assert_eq!(pacer.check(start), PacerAction::Ready);
+        assert_eq!(
+            pacer.check(start + Duration::from_millis(100)),
+            PacerAction::Ready
+        );
+        assert_eq!(
+            pacer.check(start + Duration::from_millis(110)),
+            PacerAction::WaitUntil(start + Duration::from_millis(133))
+        );
     }
 }
