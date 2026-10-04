@@ -42,7 +42,7 @@ impl EmaMiddleware {
 
 impl Middleware for EmaMiddleware {
     fn name(&self) -> &'static str {
-        "em_smoothing"
+        "ema_trasform_calc"
     }
 
     fn has_gpu_support(&self) -> bool {
@@ -56,17 +56,22 @@ impl Middleware for EmaMiddleware {
     async fn process_async(&self, frame: Frame) -> ProcessResult {
         let motion = {
             let meta = frame.metadata.read().expect(POISONED_LOCK_MSG);
-            if let Some(ref mvs) = meta.motion_vectors {
-                if !mvs.is_empty() {
-                    MotionVector {
-                        dx: mvs.iter().map(|(dx, _)| *dx as f32).sum::<f32>() / mvs.len() as f32,
-                        dy: mvs.iter().map(|(_, dy)| *dy as f32).sum::<f32>() / mvs.len() as f32,
-                    }
-                } else {
-                    MotionVector::default()
-                }
-            } else {
-                MotionVector::default()
+            if meta.motion_vectors.is_none()
+                || meta
+                    .motion_vectors
+                    .as_ref()
+                    .is_some_and(|this| this.is_empty())
+            {
+                std::mem::drop(meta);
+
+                return Ok(frame);
+            }
+
+            let mvs = meta.motion_vectors.as_ref().expect("checked above");
+
+            MotionVector {
+                dx: mvs.iter().map(|(dx, _)| *dx as f32).sum::<f32>() / mvs.len() as f32,
+                dy: mvs.iter().map(|(_, dy)| *dy as f32).sum::<f32>() / mvs.len() as f32,
             }
         };
 
@@ -77,8 +82,6 @@ impl Middleware for EmaMiddleware {
         };
 
         let transform = [1.0, 0.0, offset_x, 0.0, 1.0, offset_y];
-
-        println!("{:#?}", transform);
 
         frame
             .metadata
