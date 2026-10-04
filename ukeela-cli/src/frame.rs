@@ -2,7 +2,7 @@ use bytes::Bytes;
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use time::UtcDateTime;
 
@@ -31,6 +31,12 @@ pub enum VideoFormat {
 
 #[derive(Default, Clone)]
 pub struct FrameMetadata {
+    /// Input order before pacing drops or reorders frames.
+    pub original_order: Option<u64>,
+    /// Sequential output order assigned after pacing and processing.
+    pub order: Option<u64>,
+    /// Monotonic time when the frame entered the pipeline.
+    pub arrival_time: Option<Instant>,
     /// Per-feature displacements in feature-scaled pixel coordinates.
     pub motion_vectors: Option<Vec<(i16, i16)>>,
     /// Previous/current feature locations in feature-scaled pixel coordinates.

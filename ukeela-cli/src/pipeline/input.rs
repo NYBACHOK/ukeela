@@ -9,7 +9,7 @@ use tokio::sync::{
     watch,
 };
 
-use crate::frame::Frame;
+use crate::{POISONED_LOCK_MSG, frame::Frame};
 
 pub(super) type IngressFrame = (u64, Frame);
 
@@ -49,6 +49,12 @@ impl InputHandle {
         }
 
         let sequence = self.sequence.fetch_add(1, Ordering::Relaxed) + 1;
+        {
+            let mut metadata = frame.metadata.write().expect(POISONED_LOCK_MSG);
+            metadata.original_order = Some(sequence);
+            metadata.order = Some(sequence);
+            metadata.arrival_time = Some(std::time::Instant::now());
+        }
         self.tx.send_replace(Some((sequence, frame)));
         Ok(true)
     }

@@ -124,6 +124,7 @@ async fn process_thread(
     let mut current_width = 0u32;
     let mut current_height = 0u32;
     let mut middleware_processing_time = HashMap::<&'static str, Duration>::new();
+    let mut output_order = 0u64;
     let mut window_start = std::time::Instant::now();
     let mut stats_interval = tokio::time::interval(Duration::from_secs(1));
     stats_interval.tick().await;
@@ -233,6 +234,12 @@ async fn process_thread(
                 let elapsed = start.elapsed();
                 processing_time += elapsed;
                 frames_processed += 1;
+                output_order += 1;
+                processed
+                    .metadata
+                    .write()
+                    .expect(crate::POISONED_LOCK_MSG)
+                    .order = Some(output_order);
                 current_width = processed.width;
                 current_height = processed.height;
 

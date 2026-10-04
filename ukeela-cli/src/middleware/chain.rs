@@ -52,7 +52,7 @@ impl ProcessingChain {
                 }
             };
 
-            tracing::debug!(
+            tracing::trace!(
                 frame_id,
                 middleware = middleware_name,
                 processing_time_ms = elapsed.as_secs_f64() * 1000.0,

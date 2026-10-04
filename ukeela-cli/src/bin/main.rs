@@ -95,6 +95,8 @@ pub fn setup_logger(
         .from_env()
         .expect("default level is set")
         .add_directive("reqwest=warn".parse().unwrap())
+        .add_directive("wgpu_core=warn".parse().unwrap())
+        .add_directive("wgpu=warn".parse().unwrap())
         .add_directive("hyper_util=warn".parse().unwrap());
 
     let is_show_file = true; // cfg!(debug_assertions);

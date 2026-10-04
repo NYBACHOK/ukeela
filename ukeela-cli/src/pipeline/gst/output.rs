@@ -145,7 +145,27 @@ impl GstOutputWriter {
                 }
 
                 // Push buffer to pipeline
-                if let Err(error) = appsrc.push_buffer(buffer) {
+                let push_result = appsrc.push_buffer(buffer);
+                let (original_order, changed_order, arrival_time) = {
+                    let metadata = frame.metadata.read().expect(crate::POISONED_LOCK_MSG);
+                    (
+                        metadata.original_order,
+                        metadata.order,
+                        metadata.arrival_time,
+                    )
+                };
+                let processed_time = arrival_time.map(|arrival| arrival.elapsed());
+                tracing::debug!(
+                    frame_id = frame.id,
+                    original_order = ?original_order,
+                    changed_order = ?changed_order,
+                    processed_time_ms = ?processed_time
+                        .map(|duration| duration.as_secs_f64() * 1000.0),
+                    egress_success = push_result.is_ok(),
+                    "Frame processing completed from ingress to egress"
+                );
+
+                if let Err(error) = push_result {
                     tracing::warn!("Failed to push frame to output sink: {error}");
                 } else {
                     frames_in_window += 1;
