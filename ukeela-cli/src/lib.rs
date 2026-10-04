@@ -160,8 +160,7 @@ fn build_processing_chain(
                 })
                 .map_err(anyhow::Error::msg)?,
             )
-        } // FeaturePointsBackend::Vulkan => todo!(),
-          // FeaturePointsBackend::OpenCL => todo!(),
+        }
     });
 
     chain = chain.add_middleware(middleware::MiddlewareDisplatch::Stabilization(

@@ -1,5 +1,6 @@
 pub mod ema;
 pub mod feature_points;
+pub mod gpu_warp;
 pub mod stabilization;
 
 pub mod chain;
