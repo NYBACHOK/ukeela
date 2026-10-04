@@ -16,8 +16,12 @@ pub struct Args {
     #[arg(long, default_value_t = Backend::Auto)]
     pub backend: Backend,
 
-    #[arg(long, default_value_t = DEFAULT_CHANELLS_SIZE)]
+    #[arg(long, default_value_t = DEFAULT_CHANELLS_SIZE, help = "Output queue capacity")]
     pub channel_size: usize,
+
+    /// Maximum frame-processing rate before feature detection.
+    #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u32).range(1..121))]
+    pub processing_fps: u32,
 
     /// Total percentage cropped from each frame dimension, split across opposite edges.
     #[arg(long, value_parser = clap::value_parser!(u8).range(1..100))]
@@ -52,6 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         mode,
         backend,
         channel_size,
+        processing_fps,
         crop_percent,
         show_fps,
         log_level,
@@ -71,6 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         mode,
         backend,
         channel_size,
+        processing_fps.try_into().expect("checked by clap"),
         crop_percent,
         show_fps,
         input,

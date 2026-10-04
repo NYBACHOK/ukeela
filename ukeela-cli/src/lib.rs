@@ -1,3 +1,5 @@
+use std::num::NonZero;
+
 use crate::{
     middleware::{
         chain::ProcessingChain,
@@ -42,6 +44,7 @@ pub async fn run(
     mode: StabilizationMode,
     backend: Backend,
     channel_size: usize,
+    processing_fps: NonZero<u32>,
     crop_percent: Option<u8>,
     show_fps: bool,
     input_cfg: GstInputConfig,
@@ -51,7 +54,8 @@ pub async fn run(
 
     let chain = build_processing_chain(mode, backend, crop_percent)?;
 
-    let (mut pipeline, input_handle, output_handle) = FramePipeline::new(chain, channel_size);
+    let (mut pipeline, input_handle, output_handle) =
+        FramePipeline::new(chain, channel_size, processing_fps);
     let output_writer = GstOutputWriter::try_new(output_cfg, show_fps)?;
     let input_reader = GstInputReader::try_new(input_cfg)?;
 
