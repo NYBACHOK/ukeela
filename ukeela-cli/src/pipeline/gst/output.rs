@@ -122,6 +122,7 @@ impl GstOutputWriter {
                     }
 
                     appsrc.set_caps(Some(&caps_builder.build()));
+                    tracing::info!(width, height, "Output resolution changed");
                     last_caps = Some((width, height));
                 }
 

@@ -40,8 +40,8 @@ pub enum FeaturePointsBackend {
 #[clap(next_help_heading = "Stabilization Flags")]
 pub struct ProcessingChainFlags {
     /// Total percentage cropped from each frame dimension, split across opposite edges.
-    #[arg(long, global = true, value_parser = clap::value_parser!(u8).range(1..100), required = false)]
-    pub crop_percent: Option<u8>,
+    #[arg(long, global = true, default_value_t = 25, value_parser = clap::value_parser!(u8).range(1..100), required = false)]
+    pub crop_percent: u8,
     /// Use ema with reading of movement vectors if they available
     #[arg(long, global = true, default_value_t = false, required = false)]
     pub use_ema: bool,
@@ -90,6 +90,8 @@ pub async fn run(
                         frames_processed = stats.frames_processed,
                         avg_fps = stats.avg_fps,
                         dropped_frames = stats.dropped_frames,
+                        current_width = stats.current_width,
+                        current_height = stats.current_height,
                         avg_processing_time_ms = stats.avg_processing_time_ms,
                         middleware_processing_times_ms = ?stats.middleware_processing_times_ms,
                         "Pipeline statistics for the last interval"
@@ -115,6 +117,7 @@ fn build_processing_chain(
     }: ProcessingChainFlags,
 ) -> Result<ProcessingChain, anyhow::Error> {
     let mut chain = ProcessingChain::new();
+    let feature_frame_scale = f32::from(crop_percent) / 100.0;
 
     if use_ema {
         chain = chain.add_middleware(middleware::MiddlewareDisplatch::Ema(EmaMiddleware::new(
@@ -128,6 +131,9 @@ fn build_processing_chain(
         }
         FeaturePointsBackend::OpenCV => middleware::MiddlewareDisplatch::OpenCVFeatures(
             FeatureDetectionMiddleware::new(FeatureConfig {
+                frame_scale: feature_frame_scale,
+                crop_percent: Some(crop_percent),
+                border_crop: 50,
                 debug_features: opencv_debug_features,
                 ..FeatureConfig::default()
             })
@@ -145,7 +151,11 @@ fn build_processing_chain(
 
             middleware::MiddlewareDisplatch::OpenCVFeatures(
                 FeatureDetectionMiddleware::new(FeatureConfig {
+                    frame_scale: feature_frame_scale,
+                    crop_percent: Some(crop_percent),
+                    border_crop: 50,
                     debug_features: opencv_debug_features,
+                    num_features: 200,
                     ..FeatureConfig::default()
                 })
                 .map_err(anyhow::Error::msg)?,
@@ -156,7 +166,10 @@ fn build_processing_chain(
 
     chain = chain.add_middleware(middleware::MiddlewareDisplatch::Stabilization(
         StabilizationMiddleware::new(StabilizationConfig {
-            crop_percent,
+            crop_percent: Some(crop_percent),
+            frame_scale: feature_frame_scale,
+            q_scale: 0.0005,
+            r_scale: 3.0,
             ..StabilizationConfig::default()
         })
         .map_err(anyhow::Error::msg)?,

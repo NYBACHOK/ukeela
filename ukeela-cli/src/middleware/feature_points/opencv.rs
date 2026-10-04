@@ -31,6 +31,8 @@ const MIN_FEATURE_DISTANCE: f32 = 4.0;
 #[derive(Debug, Clone)]
 pub struct FeatureConfig {
     pub frame_scale: f32,
+    pub crop_percent: Option<u8>,
+    pub border_crop: i32,
     pub num_features: i32,
     pub fast_threshold: f32,
     pub backward_threshold: f32,
@@ -43,6 +45,8 @@ impl Default for FeatureConfig {
     fn default() -> Self {
         Self {
             frame_scale: 0.25,
+            crop_percent: None,
+            border_crop: 50,
             num_features: 200,
             fast_threshold: 30.0,
             backward_threshold: 2.0,
@@ -72,6 +76,15 @@ impl FeatureConfig {
         }
         if self.distance_to_border < 0 {
             return Err("Distance to border must be non-negative");
+        }
+        if self.border_crop < 0 {
+            return Err("Border crop must be non-negative");
+        }
+        if self
+            .crop_percent
+            .is_some_and(|percent| !(1..100).contains(&percent))
+        {
+            return Err("Crop percentage must be in [1, 100)");
         }
         Ok(())
     }
@@ -333,7 +346,8 @@ fn process_frame(
     }
 
     if let Some(debug_window) = debug_window {
-        let debug_frame = render_features(&gray_umat, &current_features)?;
+        let (crop_x, crop_y) = debug_crop_offsets(config, frame.width, frame.height);
+        let debug_frame = render_features(&gray_umat, &current_features, crop_x, crop_y)?;
         debug_window.show(debug_frame)?;
     }
 
@@ -347,13 +361,22 @@ fn process_frame(
             )
         })
         .collect();
-    let motion_vectors = if matched_displacements.len() >= MIN_MATCHES {
-        let count = matched_displacements.len() as f32;
-        let dx = matched_displacements.iter().map(|(dx, _)| dx).sum::<f32>() / count / scale;
-        let dy = matched_displacements.iter().map(|(_, dy)| dy).sum::<f32>() / count / scale;
-        Some(vec![(motion_component(dx)?, motion_component(dy)?)])
+    let (motion_vectors, motion_matches) = if matched_displacements.len() >= MIN_MATCHES {
+        let vectors = matched_displacements
+            .iter()
+            .map(|(dx, dy)| Ok((motion_component(*dx)?, motion_component(*dy)?)))
+            .collect::<Result<Vec<_>, io::Error>>()?;
+        let matches = matched_displacements
+            .iter()
+            .zip(current_features.iter())
+            .map(|((dx, dy), feature)| {
+                let current = (feature.point.x, feature.point.y);
+                ((current.0 - dx, current.1 - dy), current)
+            })
+            .collect();
+        (Some(vectors), Some(matches))
     } else {
-        None
+        (None, None)
     };
 
     tracker.features = current_features;
@@ -363,21 +386,57 @@ fn process_frame(
     let mut metadata = frame.metadata.write().expect(POISONED_LOCK_MSG);
     metadata.feature_points = Some(output_points);
     metadata.motion_vectors = motion_vectors;
+    metadata.motion_matches = motion_matches;
     drop(metadata);
 
     Ok(frame)
 }
 
-fn render_features(image: &UMat, features: &[TrackedFeature]) -> opencv::Result<DebugFrame> {
+fn debug_crop_offsets(config: &FeatureConfig, width: u32, height: u32) -> (i32, i32) {
+    let (crop_x, crop_y) = if let Some(percent) = config.crop_percent {
+        (
+            u64::from(width) * u64::from(percent) / 200,
+            u64::from(height) * u64::from(percent) / 200,
+        )
+    } else {
+        let crop_x = u64::try_from(config.border_crop).unwrap_or_default();
+        (crop_x, crop_x * u64::from(height) / u64::from(width.max(1)))
+    };
+    (
+        (crop_x as f32 * config.frame_scale).round() as i32,
+        (crop_y as f32 * config.frame_scale).round() as i32,
+    )
+}
+
+fn render_features(
+    image: &UMat,
+    features: &[TrackedFeature],
+    crop_x: i32,
+    crop_y: i32,
+) -> opencv::Result<DebugFrame> {
     let mut visualization = Mat::default();
     imgproc::cvt_color(image, &mut visualization, imgproc::COLOR_GRAY2BGR, 0)?;
+    let crop_x = crop_x.clamp(0, visualization.cols().saturating_sub(1) / 2);
+    let crop_y = crop_y.clamp(0, visualization.rows().saturating_sub(1) / 2);
+    let mut cropped = Mat::roi(
+        &visualization,
+        core::Rect::new(
+            crop_x,
+            crop_y,
+            visualization.cols() - 2 * crop_x,
+            visualization.rows() - 2 * crop_y,
+        ),
+    )?
+    .try_clone()?;
     for feature in features {
+        let x = feature.point.x.round() as i32 - crop_x;
+        let y = feature.point.y.round() as i32 - crop_y;
+        if x < 0 || y < 0 || x >= cropped.cols() || y >= cropped.rows() {
+            continue;
+        }
         imgproc::circle(
-            &mut visualization,
-            core::Point::new(
-                feature.point.x.round() as i32,
-                feature.point.y.round() as i32,
-            ),
+            &mut cropped,
+            core::Point::new(x, y),
             3,
             core::Scalar::new(0.0, 255.0, 0.0, 0.0),
             1,
@@ -386,9 +445,9 @@ fn render_features(image: &UMat, features: &[TrackedFeature]) -> opencv::Result<
         )?;
     }
     Ok(DebugFrame {
-        pixels: visualization.data_bytes()?.to_vec(),
-        width: visualization.cols(),
-        height: visualization.rows(),
+        pixels: cropped.data_bytes()?.to_vec(),
+        width: cropped.cols(),
+        height: cropped.rows(),
     })
 }
 
@@ -671,7 +730,13 @@ mod tests {
             .and_then(|vectors| vectors.first())
             .copied()
             .expect("at least ten consistent tracks should produce motion");
-        assert!((i32::from(dx) - 4).abs() <= 1);
-        assert!((i32::from(dy) - 4).abs() <= 1);
+        assert!((i32::from(dx) - 2).abs() <= 1);
+        assert!((i32::from(dy) - 2).abs() <= 1);
+        assert!(
+            metadata
+                .motion_matches
+                .as_ref()
+                .is_some_and(|matches| matches.len() >= 10)
+        );
     }
 }

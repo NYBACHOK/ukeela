@@ -50,6 +50,8 @@ pub struct PipelineStats {
     pub frames_processed: u64,
     pub avg_fps: f32,
     pub dropped_frames: u64,
+    pub current_width: u32,
+    pub current_height: u32,
     pub avg_processing_time_ms: f32,
     pub middleware_processing_times_ms: HashMap<&'static str, f32>,
 }
@@ -119,6 +121,8 @@ async fn process_thread(
     let mut frames_processed = 0u64;
     let mut processing_time = Duration::ZERO;
     let mut dropped = 0u64;
+    let mut current_width = 0u32;
+    let mut current_height = 0u32;
     let mut middleware_processing_time = HashMap::<&'static str, Duration>::new();
     let mut window_start = std::time::Instant::now();
     let mut stats_interval = tokio::time::interval(Duration::from_secs(1));
@@ -146,6 +150,8 @@ async fn process_thread(
                         &stats_tx,
                         frames_processed,
                         dropped,
+                        current_width,
+                        current_height,
                         processing_time,
                         &middleware_processing_time,
                         window_start.elapsed(),
@@ -186,6 +192,8 @@ async fn process_thread(
                             &stats_tx,
                             frames_processed,
                             dropped,
+                            current_width,
+                            current_height,
                             processing_time,
                             &middleware_processing_time,
                             window_start.elapsed(),
@@ -230,6 +238,8 @@ async fn process_thread(
                 let elapsed = start.elapsed();
                 processing_time += elapsed;
                 frames_processed += 1;
+                current_width = processed.width;
+                current_height = processed.height;
 
                 {
                     let metadata = processed.metadata.read().expect(crate::POISONED_LOCK_MSG);
@@ -266,6 +276,8 @@ async fn process_thread(
                     &stats_tx,
                     frames_processed,
                     dropped,
+                    current_width,
+                    current_height,
                     processing_time,
                     &middleware_processing_time,
                     window_start.elapsed(),
@@ -293,6 +305,8 @@ async fn process_thread(
         &stats_tx,
         frames_processed,
         dropped,
+        current_width,
+        current_height,
         processing_time,
         &middleware_processing_time,
         window_start.elapsed(),
@@ -376,6 +390,8 @@ fn publish_stats(
     stats_tx: &broadcast::Sender<PipelineStats>,
     frames_processed: u64,
     dropped_frames: u64,
+    current_width: u32,
+    current_height: u32,
     processing_time: Duration,
     middleware_processing_time: &HashMap<&'static str, Duration>,
     interval: Duration,
@@ -397,6 +413,8 @@ fn publish_stats(
             frames_processed as f32 / interval.as_secs_f32()
         },
         dropped_frames,
+        current_width,
+        current_height,
         avg_processing_time_ms: if frames_processed == 0 {
             0.0
         } else {
