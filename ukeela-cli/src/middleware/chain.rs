@@ -23,8 +23,6 @@ impl ProcessingChain {
 
     /// Process frame through all middlewares
     pub async fn process(&self, mut frame: Frame) -> ProcessResult {
-        let start = std::time::Instant::now();
-
         for mw in &self.middlewares {
             let mw_start = std::time::Instant::now();
             let frame_id = frame.id;
@@ -62,13 +60,6 @@ impl ProcessingChain {
                 "Middleware processing completed"
             );
         }
-
-        tracing::debug!(
-            "Frame {} processed in {:.1}ms through {} middlewares",
-            frame.id,
-            start.elapsed().as_secs_f32() * 1000.0,
-            self.middlewares.len()
-        );
 
         Ok(frame)
     }

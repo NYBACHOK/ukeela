@@ -1,20 +1,12 @@
 use std::{path::PathBuf, time::Duration};
 
 use clap::Parser;
-use ukeela_cli::{
-    Backend, DEFAULT_CHANELLS_SIZE, StabilizationMode, pipeline::gst::GstInputConfig, run,
-};
+use ukeela_cli::{DEFAULT_CHANELLS_SIZE, ProcessingChainFlags, pipeline::gst::GstInputConfig, run};
 
 #[derive(clap::Parser, Clone)]
 pub struct Args {
     #[command(subcommand)]
     pub input: GstInputConfig,
-
-    #[arg(long, default_value_t = StabilizationMode::L1Optimal, required = false)]
-    pub mode: StabilizationMode,
-
-    #[arg(long, default_value_t = Backend::Auto)]
-    pub backend: Backend,
 
     #[arg(long, default_value_t = DEFAULT_CHANELLS_SIZE, help = "Output queue capacity")]
     pub channel_size: usize,
@@ -22,10 +14,6 @@ pub struct Args {
     /// Maximum frame-processing rate before feature detection.
     #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u32).range(1..121))]
     pub processing_fps: u32,
-
-    /// Total percentage cropped from each frame dimension, split across opposite edges.
-    #[arg(long, value_parser = clap::value_parser!(u8).range(1..100))]
-    pub crop_percent: Option<u8>,
 
     /// Display output FPS as a GStreamer video overlay.
     #[arg(long, global = true, default_value_t = false)]
@@ -40,6 +28,9 @@ pub struct Args {
     /// Format logs as JSON
     #[arg(long, default_value_t = false)]
     pub json: bool,
+
+    #[command(flatten)]
+    pub chain_flags: ProcessingChainFlags,
 }
 
 fn default_log_level() -> tracing::Level {
@@ -53,11 +44,9 @@ fn default_log_level() -> tracing::Level {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let Args {
         input,
-        mode,
-        backend,
         channel_size,
         processing_fps,
-        crop_percent,
+        chain_flags,
         show_fps,
         log_level,
         log_output_dir,
@@ -73,14 +62,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let output = input.output();
     runtime.block_on(run(
-        mode,
-        backend,
         channel_size,
         processing_fps.try_into().expect("checked by clap"),
-        crop_percent,
         show_fps,
         input,
         output,
+        chain_flags,
     ))?;
 
     while runtime.metrics().num_alive_tasks() != 0 {

@@ -24,35 +24,37 @@ pub const DEFAULT_CHANELLS_SIZE: usize = 32;
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, derive_more::Display, clap::ValueEnum,
 )]
 #[display(rename_all = "lowercase")]
-pub enum Backend {
-    Auto,
-    CPU,
-    Vulkan,
+pub enum FeaturePointsBackend {
+    Cpu,
+    OpenCV,
+    // Vulkan,
+    // OpenCL,
 }
 
-#[derive(clap::ValueEnum, Clone, Debug, derive_more::Display)]
-#[display(rename_all = "lowercase")]
-pub enum StabilizationMode {
-    None,
-    SimpleSmoothing,
-    #[display("l1-optimal")]
-    L1Optimal,
-    MeshWarp,
+#[derive(Debug, Clone, clap::Args)]
+#[clap(next_help_heading = "Stabilization Flags")]
+pub struct ProcessingChainFlags {
+    /// Total percentage cropped from each frame dimension, split across opposite edges.
+    #[arg(long, value_parser = clap::value_parser!(u8).range(1..100), required = false)]
+    pub crop_percent: Option<u8>,
+    /// Use ema with reading of movement vectors if they available
+    #[arg(long, default_value_t = false, required = false)]
+    pub use_ema: bool,
+    #[arg(long, default_value_t = FeaturePointsBackend::OpenCV, required = false)]
+    pub features_backend: FeaturePointsBackend,
 }
 
 pub async fn run(
-    mode: StabilizationMode,
-    backend: Backend,
     channel_size: usize,
     processing_fps: NonZero<u32>,
-    crop_percent: Option<u8>,
     show_fps: bool,
     input_cfg: GstInputConfig,
     output_cfg: GstOutputConfig,
+    flags: ProcessingChainFlags,
 ) -> Result<(), Box<dyn std::error::Error>> {
     gstreamer::init()?;
 
-    let chain = build_processing_chain(mode, backend, crop_percent)?;
+    let chain = build_processing_chain(flags)?;
 
     let (mut pipeline, input_handle, output_handle) =
         FramePipeline::new(chain, channel_size, processing_fps);
@@ -97,33 +99,36 @@ pub async fn run(
 }
 
 fn build_processing_chain(
-    mode: StabilizationMode,
-    backend: Backend,
-    crop_percent: Option<u8>,
+    ProcessingChainFlags {
+        crop_percent,
+        use_ema,
+        features_backend,
+    }: ProcessingChainFlags,
 ) -> Result<ProcessingChain, anyhow::Error> {
     let mut chain = ProcessingChain::new();
 
-    chain = chain.add_middleware(middleware::MiddlewareDisplatch::Ema(EmaMiddleware::new(
-        EmaConfig::default(),
-    )));
+    if use_ema {
+        chain = chain.add_middleware(middleware::MiddlewareDisplatch::Ema(EmaMiddleware::new(
+            EmaConfig::default(),
+        )));
+    }
 
-    chain = chain.add_middleware(middleware::MiddlewareDisplatch::FeaturePoints(
-        FeaturePointsMiddleware,
+    chain = chain.add_middleware(match features_backend {
+        FeaturePointsBackend::Cpu => {
+            middleware::MiddlewareDisplatch::FeaturePoints(FeaturePointsMiddleware)
+        }
+        FeaturePointsBackend::OpenCV => todo!(),
+        // FeaturePointsBackend::Vulkan => todo!(),
+        // FeaturePointsBackend::OpenCL => todo!(),
+    });
+
+    chain = chain.add_middleware(middleware::MiddlewareDisplatch::Stabilization(
+        StabilizationMiddleware::new(StabilizationConfig {
+            crop_percent,
+            ..StabilizationConfig::default()
+        })
+        .map_err(anyhow::Error::msg)?,
     ));
-
-    if !matches!(mode, StabilizationMode::None) {
-        chain = chain.add_middleware(middleware::MiddlewareDisplatch::Stabilization(
-            StabilizationMiddleware::new(StabilizationConfig {
-                crop_percent,
-                ..StabilizationConfig::default()
-            })
-            .map_err(anyhow::Error::msg)?,
-        ));
-    }
-
-    if [Backend::Vulkan, Backend::Auto].contains(&backend) {
-        // chain = chain.add_middleware(Arc::new(GpuWarperMiddleware::new()?));
-    }
 
     Ok(chain)
 }
