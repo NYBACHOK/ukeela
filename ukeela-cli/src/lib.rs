@@ -4,7 +4,10 @@ use crate::{
     middleware::{
         chain::ProcessingChain,
         ema::{EmaMiddleware, config::EmaConfig},
-        feature_points::FeaturePointsMiddleware,
+        feature_points::{
+            cpu::FeaturePointsMiddleware,
+            opencv::{FeatureConfig, FeatureDetectionMiddleware},
+        },
         stabilization::{StabilizationConfig, StabilizationMiddleware},
     },
     pipeline::{
@@ -26,7 +29,9 @@ pub const DEFAULT_CHANELLS_SIZE: usize = 32;
 #[display(rename_all = "lowercase")]
 pub enum FeaturePointsBackend {
     Cpu,
+    #[display("open-cv")]
     OpenCV,
+    OpenCVWithOpenCL,
     // Vulkan,
     // OpenCL,
 }
@@ -35,12 +40,15 @@ pub enum FeaturePointsBackend {
 #[clap(next_help_heading = "Stabilization Flags")]
 pub struct ProcessingChainFlags {
     /// Total percentage cropped from each frame dimension, split across opposite edges.
-    #[arg(long, value_parser = clap::value_parser!(u8).range(1..100), required = false)]
+    #[arg(long, global = true, value_parser = clap::value_parser!(u8).range(1..100), required = false)]
     pub crop_percent: Option<u8>,
     /// Use ema with reading of movement vectors if they available
-    #[arg(long, default_value_t = false, required = false)]
+    #[arg(long, global = true, default_value_t = false, required = false)]
     pub use_ema: bool,
-    #[arg(long, default_value_t = FeaturePointsBackend::OpenCV, required = false)]
+    /// Open a window showing detected and tracked feature points.
+    #[arg(long, global = true, default_value_t = false, required = false)]
+    pub opencv_debug_features: bool,
+    #[arg(long,global = true, default_value_t = FeaturePointsBackend::OpenCV, required = false)]
     pub features_backend: FeaturePointsBackend,
 }
 
@@ -102,6 +110,7 @@ fn build_processing_chain(
     ProcessingChainFlags {
         crop_percent,
         use_ema,
+        opencv_debug_features,
         features_backend,
     }: ProcessingChainFlags,
 ) -> Result<ProcessingChain, anyhow::Error> {
@@ -117,9 +126,32 @@ fn build_processing_chain(
         FeaturePointsBackend::Cpu => {
             middleware::MiddlewareDisplatch::FeaturePoints(FeaturePointsMiddleware)
         }
-        FeaturePointsBackend::OpenCV => todo!(),
-        // FeaturePointsBackend::Vulkan => todo!(),
-        // FeaturePointsBackend::OpenCL => todo!(),
+        FeaturePointsBackend::OpenCV => middleware::MiddlewareDisplatch::OpenCVFeatures(
+            FeatureDetectionMiddleware::new(FeatureConfig {
+                debug_features: opencv_debug_features,
+                ..FeatureConfig::default()
+            })
+            .map_err(anyhow::Error::msg)?,
+        ),
+        FeaturePointsBackend::OpenCVWithOpenCL => {
+            if opencv::core::have_opencl()? {
+                opencv::core::set_use_opencl(true)?;
+                tracing::info!("OpenCL enabled: {}", opencv::core::use_opencl()?);
+            } else {
+                tracing::warn!(
+                    "OpenCL is not supported or drivers are missing. Falling back to CPU."
+                );
+            }
+
+            middleware::MiddlewareDisplatch::OpenCVFeatures(
+                FeatureDetectionMiddleware::new(FeatureConfig {
+                    debug_features: opencv_debug_features,
+                    ..FeatureConfig::default()
+                })
+                .map_err(anyhow::Error::msg)?,
+            )
+        } // FeaturePointsBackend::Vulkan => todo!(),
+          // FeaturePointsBackend::OpenCL => todo!(),
     });
 
     chain = chain.add_middleware(middleware::MiddlewareDisplatch::Stabilization(

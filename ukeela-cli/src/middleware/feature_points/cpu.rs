@@ -211,7 +211,7 @@ mod tests {
     use super::MAX_FEATURE_POINTS;
     use crate::{
         frame::{Frame, VideoFormat},
-        middleware::{FeaturePointsMiddleware, Middleware},
+        middleware::{Middleware, feature_points::cpu::FeaturePointsMiddleware},
     };
 
     fn checkerboard_frame(transform: Option<[f32; 6]>) -> Frame {

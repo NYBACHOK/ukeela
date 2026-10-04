@@ -3,8 +3,13 @@ pub mod feature_points;
 pub mod stabilization;
 
 pub mod chain;
-use crate::{frame::Frame, middleware::ema::EmaMiddleware};
-use feature_points::FeaturePointsMiddleware;
+use crate::{
+    frame::Frame,
+    middleware::{
+        ema::EmaMiddleware,
+        feature_points::{cpu::FeaturePointsMiddleware, opencv::FeatureDetectionMiddleware},
+    },
+};
 use stabilization::StabilizationMiddleware;
 
 /// Process a frame - returns modified frame or error
@@ -55,6 +60,7 @@ pub enum MiddlewareDisplatch {
     NoOp(NoOpMiddleware),
     Ema(EmaMiddleware),
     FeaturePoints(FeaturePointsMiddleware),
+    OpenCVFeatures(FeatureDetectionMiddleware),
     Stabilization(StabilizationMiddleware),
 }
 
@@ -64,6 +70,7 @@ impl Middleware for MiddlewareDisplatch {
             MiddlewareDisplatch::NoOp(v) => v.name(),
             MiddlewareDisplatch::Ema(v) => v.name(),
             MiddlewareDisplatch::FeaturePoints(v) => v.name(),
+            MiddlewareDisplatch::OpenCVFeatures(v) => v.name(),
             MiddlewareDisplatch::Stabilization(v) => v.name(),
         }
     }
@@ -73,6 +80,7 @@ impl Middleware for MiddlewareDisplatch {
             MiddlewareDisplatch::NoOp(v) => v.process_async(frame).await,
             MiddlewareDisplatch::Ema(v) => v.process_async(frame).await,
             MiddlewareDisplatch::FeaturePoints(v) => v.process_async(frame).await,
+            MiddlewareDisplatch::OpenCVFeatures(v) => v.process_async(frame).await,
             MiddlewareDisplatch::Stabilization(v) => v.process_async(frame).await,
         }
     }

@@ -26,6 +26,7 @@ gstreamer = "0.25"
 gstreamer-app = "0.25"
 gstreamer-video = "0.25"
 gstreamer-base = "0.25"
+opencv = { version = "0.91", features = ["clang-runtime",  ] }
 
 tokio = { version = "1.35", features = ["full"] }
 # crossbeam = "0.8"`
