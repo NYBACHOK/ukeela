@@ -13,12 +13,13 @@ clap = { version = "4.6", features = ["derive"] }
 bytes = { version = "1.12", features = [ "serde"]}
 time = "0.3"
 
-derive_more = { version = "2.1", features = ["display"]}
-enum_dispatch = "0.3"
+derive_more = { version = "2.1", features = ["display"]} 
 # thiserror = "2.0"
 anyhow = "1.0"
 dirs = "7.0"
 futures-util = "0.3"
+fearless_simd = {version = "1.0", features = ["force_support_fallback"]}
+fearless_simd_macros = "0.1"
 
 # GStreamer bindings
 gstreamer = "0.25"

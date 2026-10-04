@@ -26,11 +26,19 @@ impl GstInputReader {
                 fps,
                 output: _,
             } => {
-                format!(
-                    "v4l2src device={} ! video/x-raw,width={},height={},framerate={}/1 ! \
-             videoconvert ! video/x-raw,format=BGRA ! appsink name=sink sync=false emit-signals=true",
-                    camera_device, width, height, fps
-                )
+                if width > 640 || height > 480 {
+                    format!(
+                        "v4l2src device={} ! image/jpeg,width={},height={},framerate={}/1 ! \
+                 jpegdec ! videoconvert ! video/x-raw,format=BGRA ! appsink name=sink sync=false emit-signals=true",
+                        camera_device, width, height, fps
+                    )
+                } else {
+                    format!(
+                        "v4l2src device={} ! video/x-raw,format=YUY2,width={},height={},framerate={}/1 ! \
+                 videoconvert ! video/x-raw,format=BGRA ! appsink name=sink sync=false emit-signals=true",
+                        camera_device, width, height, fps
+                    )
+                }
             }
             GstInputConfig::File { path, output: _ } => {
                 // uridecodebin automatically handles demuxing & decoding any video format

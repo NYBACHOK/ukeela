@@ -1,5 +1,8 @@
 use crate::{
-    middleware::chain::ProcessingChain,
+    middleware::{
+        chain::ProcessingChain,
+        ema::{EmaMiddleware, config::EmaConfig},
+    },
     pipeline::{
         FramePipeline,
         gst::{GstInputConfig, GstInputReader, GstOutputConfig, GstOutputWriter},
@@ -60,7 +63,11 @@ fn build_processing_chain(
     _mode: StabilizationMode,
     backend: Backend,
 ) -> Result<ProcessingChain, anyhow::Error> {
-    let chain = ProcessingChain::new();
+    let mut chain = ProcessingChain::new();
+
+    chain = chain.add_middleware(middleware::MiddlewareDisplatch::Ema(EmaMiddleware::new(
+        EmaConfig::default(),
+    )));
 
     // Add middleware based on config
     // if use_stabilization {

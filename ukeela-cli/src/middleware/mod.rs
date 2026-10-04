@@ -1,10 +1,11 @@
+pub mod ema;
+
 pub mod chain;
-use crate::frame::Frame;
+use crate::{frame::Frame, middleware::ema::EmaMiddleware};
 
 /// Process a frame - returns modified frame or error
 pub type ProcessResult = Result<Frame, Box<dyn std::error::Error + Send + Sync>>;
 
-#[enum_dispatch::enum_dispatch(MiddlewareDisplatch)]
 pub trait Middleware: Send + Sync {
     fn name(&self) -> &'static str;
 
@@ -27,6 +28,8 @@ pub trait Middleware: Send + Sync {
     fn estimated_latency(&self) -> f32 {
         5.0 // 5ms default
     }
+
+    // fn reset(&self) // TODO: is it make sense?
 }
 
 /// No-op middleware for passthrough
@@ -43,8 +46,24 @@ impl Middleware for NoOpMiddleware {
     }
 }
 
-#[enum_dispatch::enum_dispatch]
 #[derive(Debug)]
 pub enum MiddlewareDisplatch {
     NoOp(NoOpMiddleware),
+    Ema(EmaMiddleware),
+}
+
+impl Middleware for MiddlewareDisplatch {
+    fn name(&self) -> &'static str {
+        match self {
+            MiddlewareDisplatch::NoOp(v) => v.name(),
+            MiddlewareDisplatch::Ema(v) => v.name(),
+        }
+    }
+
+    async fn process_async(&self, frame: Frame) -> ProcessResult {
+        match self {
+            MiddlewareDisplatch::NoOp(v) => v.process_async(frame).await,
+            MiddlewareDisplatch::Ema(v) => v.process_async(frame).await,
+        }
+    }
 }
