@@ -1,0 +1,27 @@
+[workspace]
+resolver = "3"
+members = ["ukeela-cli"]
+
+[workspace.package]
+license = "MIT"
+edition = "2024"
+
+[workspace.dependencies]
+# anyhow = "1.0"
+# serde = "1.0"
+# thiserror = "2.0"
+# tokio = { version = "1.52" }
+# tracing = { version = "0.1", features = [] }
+# tracing-subscriber = { version = "0.3", features = [] }
+
+[workspace.lints.rust]
+rust_2018_idioms = "deny"
+# missing_docs = "deny"
+missing_debug_implementations = "allow"
+future_incompatible = "deny"
+unsafe-code = "deny"
+
+[workspace.lints.clippy]
+unused_async = "deny"
+pedantic = "warn"
+unwrap_used = "warn"

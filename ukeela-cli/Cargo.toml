@@ -1,0 +1,44 @@
+[package]
+name = "ukeela-cli"
+version = "0.1.0"
+license.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+clap = { version = "4.6", features = ["derive"] }
+
+bytes = { version = "1.12", features = [ "serde"]}
+time = "0.3"
+
+derive_more = { version = "2.1", features = ["display"]}
+enum_dispatch = "0.3"
+thiserror = "2.0"
+anyhow = "1.0"
+dirs = "7.0"
+futures-util = "0.3"
+
+# GStreamer bindings
+gstreamer = "0.25"
+gstreamer-app = "0.25"
+gstreamer-video = "0.25"
+gstreamer-base = "0.25"
+
+tokio = { version = "1.35", features = ["full"] }
+# crossbeam = "0.8"`
+
+serde = { version = "1.0", features = ["derive"] }
+# image = "0.25"
+bytemuck = { version = "1.14", features = ["derive"] }
+
+# Logging
+tracing = { version = "0.1", features = [] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+
+
+[[bin]]
+name = "ukeela"
+path = "src/bin/main.rs"
