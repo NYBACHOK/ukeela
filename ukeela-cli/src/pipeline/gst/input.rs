@@ -26,19 +26,12 @@ impl GstInputReader {
                 fps,
                 output: _,
             } => {
-                if width > 640 || height > 480 {
-                    format!(
-                        "v4l2src device={} ! image/jpeg,width={},height={},framerate={}/1 ! \
-                 jpegdec ! videoconvert ! video/x-raw,format=BGRA ! appsink name=sink sync=false emit-signals=true",
-                        camera_device, width, height, fps
-                    )
-                } else {
-                    format!(
-                        "v4l2src device={} ! video/x-raw,format=YUY2,width={},height={},framerate={}/1 ! \
-                 videoconvert ! video/x-raw,format=BGRA ! appsink name=sink sync=false emit-signals=true",
-                        camera_device, width, height, fps
-                    )
-                }
+                format!(
+                    "v4l2src device={} extra-controls=\"s,auto_exposure=3,exposure_dynamic_framerate=0\" ! \
+     image/jpeg,width={},height={},framerate={}/1 ! \
+     jpegdec ! videoconvert ! video/x-raw,format=BGRA ! appsink name=sink sync=false emit-signals=true",
+                    camera_device, width, height, fps
+                )
             }
             GstInputConfig::File { path, output: _ } => {
                 // uridecodebin automatically handles demuxing & decoding any video format
@@ -56,6 +49,8 @@ impl GstInputReader {
                 output: _,
             } => pipeline,
         };
+
+        tracing::info!(pipeline = %pipeline, "Opening GStreamer Ingress pipine");
 
         let pipeline = gstreamer::parse::launch(&pipeline)
             .context("Failed to create GStreamer input file pipeline")?

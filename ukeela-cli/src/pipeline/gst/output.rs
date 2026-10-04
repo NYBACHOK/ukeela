@@ -51,6 +51,8 @@ impl GstOutputWriter {
             GstOutputConfig::Custom { pipeline } => (pipeline, None),
         };
 
+        tracing::info!(pipeline = %pipeline_str, "Opening GStreamer Egress pipine");
+
         let pipeline = gstreamer::parse::launch(&pipeline_str)
             .context("Failed to create GStreamer output pipeline")?
             .downcast::<gstreamer::Pipeline>()
