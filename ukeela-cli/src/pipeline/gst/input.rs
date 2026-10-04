@@ -28,7 +28,7 @@ impl GstInputReader {
             } => {
                 format!(
                     "v4l2src device={} ! video/x-raw,width={},height={},framerate={}/1 ! \
-             videoconvert ! appsink name=sink sync=false emit-signals=true",
+             videoconvert ! video/x-raw,format=BGRA ! appsink name=sink sync=false emit-signals=true",
                     camera_device, width, height, fps
                 )
             }
@@ -39,7 +39,7 @@ impl GstInputReader {
                 let uri = format!("file://{}", absolute_path.to_string_lossy());
 
                 format!(
-                    "uridecodebin uri=\"{}\" ! videoconvert ! video/x-raw,format=RGB ! appsink name=sink sync=true emit-signals=true",
+                    "uridecodebin uri=\"{}\" ! videoconvert ! video/x-raw,format=BGRA ! appsink name=sink sync=true emit-signals=true",
                     uri
                 )
             }
@@ -85,7 +85,7 @@ impl GstInputReader {
                         .map_err(|_| gstreamer::FlowError::Error)?;
 
                     let data = Bytes::copy_from_slice(&mapped);
-                    let frame = Frame::new(data, width, height, VideoFormat::RGB);
+                    let frame = Frame::new(data, width, height, VideoFormat::BGRA);
 
                     // Send to pipeline - non-blocking to avoid stalling GStreamer
                     match input_handle.send_frame_nonblocking(frame) {
