@@ -1,9 +1,10 @@
+use anyhow::Context;
 use gstreamer::{
     glib::object::Cast,
     prelude::{ElementExt, GstBinExt},
 };
 
-use crate::pipeline::output::OutputHandle;
+use crate::pipeline::{gst::GstOutputConfig, output::OutputHandle};
 
 pub struct GstOutputWriter {
     pipeline: gstreamer::Pipeline,
@@ -11,31 +12,48 @@ pub struct GstOutputWriter {
 }
 
 impl GstOutputWriter {
-    pub fn new_for_display(width: u32, height: u32) -> Self {
-        let pipeline_str = format!(
-            "appsrc name=src caps=\"video/x-raw,width={},height={},format=BGRA\" ! \
+    pub fn try_new(cfg: GstOutputConfig) -> anyhow::Result<Self> {
+        let pipeline = match cfg {
+            GstOutputConfig::Display { width, height } => format!(
+                "appsrc name=src caps=\"video/x-raw,width={},height={},format=BGRA\" ! \
              videoconvert ! autovideosink sync=false",
-            width, height
-        );
+                width, height
+            ),
+            GstOutputConfig::File {
+                path,
+                width,
+                height,
+                fps,
+            } => format!(
+                "appsrc name=src caps=\"video/x-raw,width={},height={},format=BGRA,framerate={}/1\" ! \
+             videoconvert ! x264enc speed-preset=ultrafast tune=zerolatency ! \
+             h264parse ! mp4mux ! filesink location=\"{}\"",
+                width,
+                height,
+                fps,
+                path.to_string_lossy()
+            ),
+            GstOutputConfig::Custom { pipeline } => pipeline,
+        };
 
-        let pipeline = gstreamer::parse::launch(&pipeline_str)
-            .expect("Failed to create output pipeline")
+        let pipeline = gstreamer::parse::launch(&pipeline)
+            .context("Failed to create GStreamer input file pipeline")?
             .downcast::<gstreamer::Pipeline>()
             .unwrap();
 
         let appsrc = pipeline
             .by_name("src")
-            .expect("Appsrc not found")
+            .context("Appsrc not found")?
             .downcast::<gstreamer_app::AppSrc>()
             .unwrap();
 
         appsrc.set_stream_type(gstreamer_app::AppStreamType::Stream);
         appsrc.set_format(gstreamer::Format::Time);
 
-        Self { pipeline, appsrc }
+        Ok(Self { pipeline, appsrc })
     }
 
-    pub fn start_output_loop(self, mut output_handle: OutputHandle) {
+    pub fn start_output_thread(self, mut output_handle: OutputHandle) {
         let appsrc = self.appsrc.clone();
 
         self.pipeline.set_state(gstreamer::State::Playing).unwrap();

@@ -1,3 +1,4 @@
+use anyhow::Context;
 use bytes::Bytes;
 use futures_util::StreamExt;
 use gstreamer::{
@@ -7,7 +8,7 @@ use gstreamer::{
 
 use crate::{
     frame::{Frame, VideoFormat},
-    pipeline::input::InputHandle,
+    pipeline::{gst::GstInputConfig, input::InputHandle},
 };
 
 pub struct GstInputReader {
@@ -16,25 +17,50 @@ pub struct GstInputReader {
 }
 
 impl GstInputReader {
-    pub fn new_for_camera(device: &str, width: u32, height: u32, fps: u32) -> Self {
-        let pipeline_str = format!(
-            "v4l2src device={} ! video/x-raw,width={},height={},framerate={}/1 ! \
+    pub fn try_new(cfg: GstInputConfig) -> anyhow::Result<Self> {
+        let pipeline = match cfg {
+            GstInputConfig::Camera {
+                camera_device,
+                width,
+                height,
+                fps,
+                output: _,
+            } => {
+                format!(
+                    "v4l2src device={} ! video/x-raw,width={},height={},framerate={}/1 ! \
              videoconvert ! appsink name=sink sync=false emit-signals=true",
-            device, width, height, fps
-        );
+                    camera_device, width, height, fps
+                )
+            }
+            GstInputConfig::File { path, output: _ } => {
+                // uridecodebin automatically handles demuxing & decoding any video format
+                let absolute_path =
+                    std::fs::canonicalize(&path).unwrap_or_else(|_| std::path::PathBuf::from(path));
+                let uri = format!("file://{}", absolute_path.to_string_lossy());
 
-        let pipeline = gstreamer::parse::launch(&pipeline_str)
-            .expect("Failed to create GStreamer pipeline")
+                format!(
+                    "uridecodebin uri=\"{}\" ! videoconvert ! video/x-raw,format=RGB ! appsink name=sink sync=true emit-signals=true",
+                    uri
+                )
+            }
+            GstInputConfig::Custom {
+                pipeline,
+                output: _,
+            } => pipeline,
+        };
+
+        let pipeline = gstreamer::parse::launch(&pipeline)
+            .context("Failed to create GStreamer input file pipeline")?
             .downcast::<gstreamer::Pipeline>()
             .unwrap();
 
         let appsink = pipeline
             .by_name("sink")
-            .expect("Appsink not found")
+            .context("Appsink not found")?
             .downcast::<gstreamer_app::AppSink>()
             .unwrap();
 
-        Self { pipeline, appsink }
+        Ok(Self { pipeline, appsink })
     }
 
     pub fn start_input_thread(self, input_handle: InputHandle) {

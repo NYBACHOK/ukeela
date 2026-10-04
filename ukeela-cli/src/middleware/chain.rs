@@ -1,14 +1,12 @@
-use std::sync::Arc;
-
 use crate::{
     POISONED_LOCK_MSG,
     frame::Frame,
     middleware::{Middleware, MiddlewareDisplatch, ProcessResult},
 };
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub struct ProcessingChain {
-    middlewares: Vec<Arc<MiddlewareDisplatch>>,
+    middlewares: Vec<MiddlewareDisplatch>,
 }
 
 impl ProcessingChain {
@@ -19,7 +17,7 @@ impl ProcessingChain {
     }
 
     pub fn add_middleware(mut self, mw: MiddlewareDisplatch) -> Self {
-        self.middlewares.push(Arc::new(mw));
+        self.middlewares.push(mw);
         self
     }
 

@@ -17,12 +17,9 @@ pub mod output;
 
 #[derive(Debug)]
 pub struct FramePipeline {
-    input_tx: Sender<Frame>,
-    processing_chain: ProcessingChain,
-
     // Control signals
     shutdown_tx: broadcast::Sender<()>,
-    stats_rx: broadcast::Receiver<PipelineStats>,
+    pub stats_rx: broadcast::Receiver<PipelineStats>,
 }
 
 #[derive(Clone, Debug)]
@@ -45,8 +42,6 @@ impl FramePipeline {
         let (shutdown_tx, _) = broadcast::channel(1);
 
         let pipeline = FramePipeline {
-            input_tx: input_tx.clone(),
-            processing_chain: processing_chain.clone(),
             shutdown_tx: shutdown_tx.clone(),
             stats_rx,
         };
@@ -143,4 +138,10 @@ async fn process_thread(
         frames_processed,
         dropped
     );
+}
+
+impl Drop for FramePipeline {
+    fn drop(&mut self) {
+        let _ = self.shutdown_tx.send(());
+    }
 }

@@ -15,7 +15,7 @@ time = "0.3"
 
 derive_more = { version = "2.1", features = ["display"]}
 enum_dispatch = "0.3"
-thiserror = "2.0"
+# thiserror = "2.0"
 anyhow = "1.0"
 dirs = "7.0"
 futures-util = "0.3"
@@ -31,7 +31,7 @@ tokio = { version = "1.35", features = ["full"] }
 
 serde = { version = "1.0", features = ["derive"] }
 # image = "0.25"
-bytemuck = { version = "1.14", features = ["derive"] }
+# bytemuck = { version = "1.14", features = ["derive"] }
 
 # Logging
 tracing = { version = "0.1", features = [] }

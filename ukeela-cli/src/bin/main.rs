@@ -1,30 +1,17 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use clap::Parser;
-use ukeela_cli::{Backend, DEFAULT_CHANELLS_SIZE, StabilizationMode, run};
+use ukeela_cli::{
+    Backend, DEFAULT_CHANELLS_SIZE, StabilizationMode, pipeline::gst::GstInputConfig, run,
+};
 
 #[derive(clap::Parser, Clone)]
-pub struct Config {
-    #[arg(short, long, default_value = "/dev/video0")]
-    pub camera_device: String,
+pub struct Args {
+    #[command(subcommand)]
+    pub input: GstInputConfig,
 
-    #[arg(long, default_value_t = 1920)]
-    pub width: u32,
-
-    #[arg(long, default_value_t = 1080)]
-    pub height: u32,
-
-    #[arg(long, default_value_t = 30)]
-    pub fps: u32,
-
-    #[arg(long)]
-    pub use_stabilization: bool,
-
-    #[arg(long, default_value_t = StabilizationMode::L1Optimal)]
+    #[arg(long, default_value_t = StabilizationMode::L1Optimal, required = false)]
     pub mode: StabilizationMode,
-
-    #[arg(long)]
-    pub gpu_enabled: bool,
 
     #[arg(long, default_value_t = Backend::Auto)]
     pub backend: Backend,
@@ -52,20 +39,16 @@ fn default_log_level() -> tracing::Level {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let Config {
-        camera_device,
-        width,
-        height,
-        fps,
-        use_stabilization,
+    let Args {
+        input,
         mode,
-        gpu_enabled,
         backend,
         channel_size,
         log_level,
         log_output_dir,
         json,
-    } = Config::parse();
+        ..
+    } = Args::parse();
 
     let _guard = setup_logger(log_level, log_output_dir, "ukeela", json);
 
@@ -73,7 +56,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .enable_all()
         .build()?;
 
-    runtime.block_on(run(use_stabilization, gpu_enabled, backend, channel_size))?;
+    let output = input.output();
+    runtime.block_on(run(mode, backend, channel_size, input, output))?;
+
+    while runtime.metrics().num_alive_tasks() != 0 {
+        std::thread::sleep(Duration::from_millis(100));
+    }
 
     Ok(())
 }
@@ -98,7 +86,7 @@ pub fn setup_logger(
         .add_directive("reqwest=warn".parse().unwrap())
         .add_directive("hyper_util=warn".parse().unwrap());
 
-    let is_show_file = cfg!(debug_assertions);
+    let is_show_file = true; // cfg!(debug_assertions);
     if json {
         let file_layer = tracing_subscriber::fmt::layer()
             .json()
