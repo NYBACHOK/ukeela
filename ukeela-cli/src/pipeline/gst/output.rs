@@ -92,7 +92,9 @@ impl GstOutputWriter {
             fps_overlay,
         } = self;
 
-        pipeline.set_state(gstreamer::State::Playing).unwrap();
+        let _ = pipeline
+            .set_state(gstreamer::State::Playing)
+            .inspect_err(|e| tracing::error!(error = ?e, "Changing state of Egress"));
 
         tokio::spawn(async move {
             // Keep pipeline alive inside the async block for the lifetime of the stream
