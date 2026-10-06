@@ -465,7 +465,7 @@ fn preprocess_frame(
 
     let channels = match frame.format {
         VideoFormat::I420 | VideoFormat::NV12 => 1,
-        VideoFormat::RGB => 3,
+        VideoFormat::RGB | VideoFormat::BGR => 3,
         VideoFormat::RGBA | VideoFormat::BGRA => 4,
     };
     let row_bytes = usize::try_from(width)
@@ -511,6 +511,7 @@ fn preprocess_frame(
     match frame.format {
         VideoFormat::I420 | VideoFormat::NV12 => source.copy_to(&mut gray)?,
         VideoFormat::RGB => imgproc::cvt_color(&source, &mut gray, imgproc::COLOR_RGB2GRAY, 0)?,
+        VideoFormat::BGR => imgproc::cvt_color(&source, &mut gray, imgproc::COLOR_BGR2GRAY, 0)?,
         VideoFormat::RGBA => imgproc::cvt_color(&source, &mut gray, imgproc::COLOR_RGBA2GRAY, 0)?,
         VideoFormat::BGRA => imgproc::cvt_color(&source, &mut gray, imgproc::COLOR_BGRA2GRAY, 0)?,
     }

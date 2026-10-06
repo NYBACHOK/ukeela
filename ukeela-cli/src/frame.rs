@@ -26,6 +26,7 @@ pub enum VideoFormat {
     NV12,
     RGB,
     RGBA,
+    BGR,
     BGRA,
 }
 

@@ -561,9 +561,9 @@ fn frame_to_bgra(frame: &Frame) -> Result<Mat, Box<dyn std::error::Error + Send 
             };
             (yuv, conversion)
         }
-        VideoFormat::RGB | VideoFormat::RGBA | VideoFormat::BGRA => {
+        VideoFormat::RGB | VideoFormat::RGBA | VideoFormat::BGR | VideoFormat::BGRA => {
             let channels = match frame.format {
-                VideoFormat::RGB => 3,
+                VideoFormat::RGB | VideoFormat::BGR => 3,
                 VideoFormat::RGBA | VideoFormat::BGRA => 4,
                 VideoFormat::I420 | VideoFormat::NV12 => unreachable!(),
             };
@@ -593,6 +593,7 @@ fn frame_to_bgra(frame: &Frame) -> Result<Mat, Box<dyn std::error::Error + Send 
             }
             let conversion = match frame.format {
                 VideoFormat::RGB => imgproc::COLOR_RGB2BGRA,
+                VideoFormat::BGR => imgproc::COLOR_BGR2BGRA,
                 VideoFormat::RGBA => imgproc::COLOR_RGBA2BGRA,
                 VideoFormat::BGRA => {
                     return Ok(source);
@@ -638,6 +639,7 @@ fn bgra_to_format(
             return Ok(output.data_bytes()?.to_vec());
         }
         VideoFormat::RGB => imgproc::COLOR_BGRA2RGB,
+        VideoFormat::BGR => imgproc::COLOR_BGRA2BGR,
         VideoFormat::RGBA => imgproc::COLOR_BGRA2RGBA,
         VideoFormat::I420 => imgproc::COLOR_BGRA2YUV_I420,
         VideoFormat::NV12 => unreachable!(),
@@ -892,6 +894,7 @@ mod tests {
 
         for (format, bytes_per_pixel) in [
             (VideoFormat::RGB, 3),
+            (VideoFormat::BGR, 3),
             (VideoFormat::RGBA, 4),
             (VideoFormat::BGRA, 4),
             (VideoFormat::I420, 0),

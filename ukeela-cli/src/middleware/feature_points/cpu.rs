@@ -72,9 +72,9 @@ fn grayscale_pixels(frame: &Frame) -> Result<Vec<f32>, io::Error> {
                 .map(|value| f32::from(*value))
                 .collect())
         }
-        VideoFormat::RGB | VideoFormat::RGBA | VideoFormat::BGRA => {
+        VideoFormat::RGB | VideoFormat::RGBA | VideoFormat::BGR | VideoFormat::BGRA => {
             let bytes_per_pixel = match frame.format {
-                VideoFormat::RGB => 3,
+                VideoFormat::RGB | VideoFormat::BGR => 3,
                 VideoFormat::RGBA | VideoFormat::BGRA => 4,
                 VideoFormat::I420 | VideoFormat::NV12 => unreachable!(),
             };
@@ -100,7 +100,8 @@ fn grayscale_pixels(frame: &Frame) -> Result<Vec<f32>, io::Error> {
             } else {
                 row_bytes
             };
-            let (red, green, blue) = if matches!(frame.format, VideoFormat::BGRA) {
+            let (red, green, blue) = if matches!(frame.format, VideoFormat::BGR | VideoFormat::BGRA)
+            {
                 (2, 1, 0)
             } else {
                 (0, 1, 2)

@@ -12,7 +12,7 @@ use crate::{
     },
     pipeline::{
         FramePipeline,
-        gst::{GstInputConfig, GstInputReader, GstOutputConfig, GstOutputWriter},
+        gst::{GstInputConfig, GstInputReader, GstOutputConfig, GstOutputWriter, GstPixelFormat},
     },
 };
 
@@ -58,6 +58,7 @@ pub async fn run(
     show_fps: bool,
     input_cfg: GstInputConfig,
     output_cfg: GstOutputConfig,
+    output_format: GstPixelFormat,
     flags: ProcessingChainFlags,
 ) -> Result<(), Box<dyn std::error::Error>> {
     gstreamer::init()?;
@@ -66,7 +67,7 @@ pub async fn run(
 
     let (mut pipeline, input_handle, output_handle) =
         FramePipeline::new(chain, channel_size, processing_fps);
-    let output_writer = GstOutputWriter::try_new(output_cfg, show_fps)?;
+    let output_writer = GstOutputWriter::try_new(output_cfg, show_fps, output_format)?;
     let input_reader = GstInputReader::try_new(input_cfg)?;
 
     output_writer.start_output_thread(output_handle);

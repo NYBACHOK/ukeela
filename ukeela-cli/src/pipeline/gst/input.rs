@@ -33,6 +33,16 @@ impl GstInputReader {
                     camera_device, width, height, fps
                 )
             }
+            GstInputConfig::Libcamera {
+                output: _,
+                width,
+                height,
+                fps,
+            } => format!(
+                "libcamerasrc ae-metering-mode=spot ! \
+                 video/x-raw,format=BGR,width={width},height={height},framerate={fps}/1 ! \
+                 appsink name=sink max-buffers=1 drop=true"
+            ),
             GstInputConfig::File { path, output: _ } => {
                 // uridecodebin automatically handles demuxing & decoding any video format
                 let absolute_path =
@@ -88,7 +98,14 @@ impl GstInputReader {
                         .map_err(|_| gstreamer::FlowError::Error)?;
 
                     let data = Bytes::copy_from_slice(&mapped);
-                    let frame = Frame::new(data, width, height, VideoFormat::BGRA);
+                    let Some(format) = caps_video_format(structure) else {
+                        tracing::error!(
+                            caps = %caps,
+                            "Input caps must specify a supported BGR or BGRA pixel format"
+                        );
+                        return Err(gstreamer::FlowError::NotNegotiated);
+                    };
+                    let frame = Frame::new(data, width, height, format);
 
                     // Send to pipeline - non-blocking to avoid stalling GStreamer
                     match input_handle.send_frame_nonblocking(frame) {
@@ -134,5 +151,13 @@ impl GstInputReader {
                 }
             }
         });
+    }
+}
+
+fn caps_video_format(structure: &gstreamer::StructureRef) -> Option<VideoFormat> {
+    match structure.get::<String>("format").ok()?.as_str() {
+        "BGR" => Some(VideoFormat::BGR),
+        "BGRA" => Some(VideoFormat::BGRA),
+        _ => None,
     }
 }
