@@ -252,7 +252,6 @@ async fn process_thread(
 
                 if output_tx.try_send(processed).is_err() {
                     dropped += 1;
-                    tracing::warn!("Dropped processed frame - output backlog");
                 }
             }
             Err(error) => {
