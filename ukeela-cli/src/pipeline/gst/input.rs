@@ -77,6 +77,8 @@ impl GstInputReader {
     }
 
     pub fn start_input_thread(self, input_handle: InputHandle) {
+        let input_handle_outer = input_handle.clone();
+
         // Set up callback to push frames
         self.appsink.set_callbacks(
             gstreamer_app::AppSinkCallbacks::builder()
@@ -120,7 +122,13 @@ impl GstInputReader {
                 .build(),
         );
 
-        self.pipeline.set_state(gstreamer::State::Playing).unwrap();
+        if let Err(e) = self.pipeline.set_state(gstreamer::State::Playing) {
+            tracing::error!(error = ?e, "Changing state of Ingress");
+
+            input_handle_outer
+                .closed
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+        }
 
         let pipeline = self.pipeline;
         tokio::spawn(async move {
