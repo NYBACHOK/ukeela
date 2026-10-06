@@ -1,7 +1,4 @@
-use std::{
-    io,
-    sync::{Arc, Mutex},
-};
+use std::{io, sync::Mutex};
 
 use bytes::Bytes;
 use opencv::{
@@ -14,7 +11,6 @@ use opencv::{
 use crate::{
     POISONED_LOCK_MSG,
     frame::{Frame, MotionMatch, VideoFormat},
-    middleware::gpu_warp::GpuWarpContext,
     middleware::{Middleware, ProcessResult},
 };
 
@@ -149,7 +145,6 @@ impl StabilizationState {
 pub struct StabilizationMiddleware {
     config: StabilizationConfig,
     state: Mutex<StabilizationState>,
-    gpu: tokio::sync::OnceCell<Option<Arc<GpuWarpContext>>>,
 }
 
 impl StabilizationMiddleware {
@@ -177,7 +172,6 @@ impl StabilizationMiddleware {
         Ok(Self {
             state: Mutex::new(StabilizationState::new(&config)),
             config,
-            gpu: tokio::sync::OnceCell::new(),
         })
     }
 }
@@ -201,15 +195,14 @@ impl Middleware for StabilizationMiddleware {
         true
     }
 
-    async fn process_async(&self, frame: Frame) -> ProcessResult {
-        process_frame(&self.config, &self.state, &self.gpu, frame).await
+    fn process_async(&self, frame: Frame) -> impl std::future::Future<Output = ProcessResult> {
+        std::future::ready(process_frame(&self.config, &self.state, frame))
     }
 }
 
-async fn process_frame(
+fn process_frame(
     config: &StabilizationConfig,
     state_mutex: &Mutex<StabilizationState>,
-    gpu_cell: &tokio::sync::OnceCell<Option<Arc<GpuWarpContext>>>,
     mut frame: Frame,
 ) -> ProcessResult {
     let (motion_matches, motion_vectors) = {
@@ -239,92 +232,44 @@ async fn process_frame(
         return Ok(frame);
     };
 
-    let motion = {
-        let mut state = state_mutex.lock().expect(POISONED_LOCK_MSG);
-        let motion = if state.frame_counter < FIRST_RAW_FRAMES {
-            state.kalman.seed(measurement);
-            Smoothened::from(measurement)
-        } else {
-            state.kalman.update(measurement)
-        };
-        state.frame_counter = state.frame_counter.saturating_add(1);
-        motion
+    let mut state = state_mutex.lock().expect(POISONED_LOCK_MSG);
+    let motion = if state.frame_counter < FIRST_RAW_FRAMES {
+        state.kalman.seed(measurement);
+        Smoothened::from(measurement)
+    } else {
+        state.kalman.update(measurement)
     };
+    state.frame_counter = state.frame_counter.saturating_add(1);
+    drop(state);
 
     let inverse = inverse_transform(motion);
-    let gpu = gpu_cell
-        .get_or_init(|| async {
-            match GpuWarpContext::new(true).await {
-                Ok(context) => {
-                    let capabilities = context.capabilities();
-                    tracing::info!(
-                        backend = ?capabilities.backend,
-                        adapter = %capabilities.name,
-                        max_texture_size = capabilities.max_texture_size,
-                        "GPU affine warp initialized"
-                    );
-                    Some(Arc::new(context))
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        %error,
-                        "GPU affine warp unavailable; using OpenCV CPU warp"
-                    );
-                    None
-                }
-            }
-        })
-        .await;
-    let direct_bgra = tightly_packed_bgra(&frame);
-    let input_image = if direct_bgra.is_none() {
-        Some(frame_to_bgra(&frame)?)
-    } else {
-        None
-    };
-    let input_pixels = match (direct_bgra, input_image.as_ref()) {
-        (Some(pixels), _) => pixels,
-        (None, Some(image)) => image.data_bytes()?,
-        (None, None) => return Err(invalid_frame("Could not prepare BGRA frame data").into()),
-    };
-    let affine = [
-        *inverse.at_2d::<f64>(0, 0)?,
-        *inverse.at_2d::<f64>(0, 1)?,
-        *inverse.at_2d::<f64>(0, 2)?,
-        *inverse.at_2d::<f64>(1, 0)?,
-        *inverse.at_2d::<f64>(1, 1)?,
-        *inverse.at_2d::<f64>(1, 2)?,
-    ];
-    let determinant = affine[0] * affine[4] - affine[1] * affine[3];
-    // OpenCV treats the supplied affine matrix as a forward transform and inverts it for sampling.
-    let transform = [
-        (affine[4] / determinant) as f32,
-        (-affine[1] / determinant) as f32,
-        ((affine[1] * affine[5] - affine[4] * affine[2]) / determinant) as f32,
-        (-affine[3] / determinant) as f32,
-        (affine[0] / determinant) as f32,
-        ((affine[3] * affine[2] - affine[0] * affine[5]) / determinant) as f32,
-    ];
-    let width = frame.width;
-    let height = frame.height;
-    let warped = if let Some(gpu) = gpu.as_deref() {
-        match gpu.warp_bgra(input_pixels, width, height, transform) {
-            Ok(pixels) => bgra_from_bytes(&pixels, height)?,
-            Err(error) => {
-                tracing::warn!(%error, "GPU affine warp failed; using OpenCV CPU warp");
-                let image = match input_image {
-                    Some(image) => image,
-                    None => frame_to_bgra(&frame)?,
-                };
-                warp_bgra_cpu(&image, &inverse, width, height, state_mutex)?
-            }
-        }
-    } else {
-        let image = match input_image {
-            Some(image) => image,
-            None => frame_to_bgra(&frame)?,
-        };
-        warp_bgra_cpu(&image, &inverse, width, height, state_mutex)?
-    };
+    let image = frame_to_image(&frame)?;
+    let mut source_umat = UMat::new(UMatUsageFlags::USAGE_DEFAULT);
+    image.copy_to(&mut source_umat)?;
+    let mut state = state_mutex.lock().expect(POISONED_LOCK_MSG);
+    let mut warped_umat = state
+        .warped_frame
+        .take()
+        .unwrap_or_else(|| UMat::new(UMatUsageFlags::USAGE_DEFAULT));
+    imgproc::warp_affine(
+        &source_umat,
+        &mut warped_umat,
+        &inverse,
+        Size::new(
+            i32::try_from(frame.width)
+                .map_err(|_| invalid_frame("frame width exceeds OpenCV limits"))?,
+            i32::try_from(frame.height)
+                .map_err(|_| invalid_frame("frame height exceeds OpenCV limits"))?,
+        ),
+        imgproc::INTER_LINEAR,
+        core::BORDER_REFLECT,
+        Scalar::default(),
+    )?;
+
+    let mut warped = Mat::default();
+    warped_umat.copy_to(&mut warped)?;
+    state.warped_frame = Some(warped_umat);
+    drop(state);
     let (crop_x, crop_y) = crop_borders(config, &frame)?;
     let cropped = Mat::roi(
         &warped,
@@ -336,12 +281,20 @@ async fn process_frame(
         ),
     )?;
     let cropped = cropped.try_clone()?;
-    let output = bgra_to_format(&cropped, frame.format.clone())?;
+    let output = image_to_format(&cropped, frame.format.clone())?;
     frame.data = Bytes::from(output).into();
     frame.width = u32::try_from(cropped.cols())
         .map_err(|_| invalid_frame("output width exceeds frame limits"))?;
     frame.height = u32::try_from(cropped.rows())
         .map_err(|_| invalid_frame("output height exceeds frame limits"))?;
+    let affine = [
+        *inverse.at_2d::<f64>(0, 0)?,
+        *inverse.at_2d::<f64>(0, 1)?,
+        *inverse.at_2d::<f64>(0, 2)?,
+        *inverse.at_2d::<f64>(1, 0)?,
+        *inverse.at_2d::<f64>(1, 1)?,
+        *inverse.at_2d::<f64>(1, 2)?,
+    ];
     let mut metadata = frame.metadata.write().expect(POISONED_LOCK_MSG);
     metadata.estimated_transform = Some([
         affine[0] as f32,
@@ -373,60 +326,6 @@ async fn process_frame(
     }
     drop(metadata);
     Ok(frame)
-}
-
-fn warp_bgra_cpu(
-    image: &Mat,
-    inverse: &Mat,
-    width: u32,
-    height: u32,
-    state_mutex: &Mutex<StabilizationState>,
-) -> Result<Mat, Box<dyn std::error::Error + Send + Sync>> {
-    let mut source_umat = UMat::new(UMatUsageFlags::USAGE_DEFAULT);
-    image.copy_to(&mut source_umat)?;
-    let mut state = state_mutex.lock().expect(POISONED_LOCK_MSG);
-    let mut warped_umat = state
-        .warped_frame
-        .take()
-        .unwrap_or_else(|| UMat::new(UMatUsageFlags::USAGE_DEFAULT));
-    imgproc::warp_affine(
-        &source_umat,
-        &mut warped_umat,
-        inverse,
-        Size::new(
-            i32::try_from(width).map_err(|_| invalid_frame("frame width exceeds OpenCV limits"))?,
-            i32::try_from(height)
-                .map_err(|_| invalid_frame("frame height exceeds OpenCV limits"))?,
-        ),
-        imgproc::INTER_LINEAR,
-        core::BORDER_REFLECT,
-        Scalar::default(),
-    )?;
-
-    let mut warped = Mat::default();
-    warped_umat.copy_to(&mut warped)?;
-    state.warped_frame = Some(warped_umat);
-    Ok(warped)
-}
-
-fn bgra_from_bytes(
-    pixels: &[u8],
-    height: u32,
-) -> Result<Mat, Box<dyn std::error::Error + Send + Sync>> {
-    let pixels = Mat::from_slice(pixels)?;
-    Ok(pixels.reshape(4, i32::try_from(height)?)?.try_clone()?)
-}
-
-fn tightly_packed_bgra(frame: &Frame) -> Option<&[u8]> {
-    if !matches!(frame.format, VideoFormat::BGRA) {
-        return None;
-    }
-
-    let required_len = usize::try_from(frame.width)
-        .ok()?
-        .checked_mul(usize::try_from(frame.height).ok()?)?
-        .checked_mul(4)?;
-    (frame.data.len() == required_len).then_some(&frame.data)
 }
 
 fn estimate_motion(
@@ -528,7 +427,7 @@ fn crop_borders(config: &StabilizationConfig, frame: &Frame) -> Result<(i32, i32
     ))
 }
 
-fn frame_to_bgra(frame: &Frame) -> Result<Mat, Box<dyn std::error::Error + Send + Sync>> {
+fn frame_to_image(frame: &Frame) -> Result<Mat, Box<dyn std::error::Error + Send + Sync>> {
     let width =
         i32::try_from(frame.width).map_err(|_| invalid_frame("frame width is too large"))?;
     let height =
@@ -593,11 +492,8 @@ fn frame_to_bgra(frame: &Frame) -> Result<Mat, Box<dyn std::error::Error + Send 
             }
             let conversion = match frame.format {
                 VideoFormat::RGB => imgproc::COLOR_RGB2BGRA,
-                VideoFormat::BGR => imgproc::COLOR_BGR2BGRA,
                 VideoFormat::RGBA => imgproc::COLOR_RGBA2BGRA,
-                VideoFormat::BGRA => {
-                    return Ok(source);
-                }
+                VideoFormat::BGR | VideoFormat::BGRA => return Ok(source),
                 VideoFormat::I420 | VideoFormat::NV12 => unreachable!(),
             };
             (source, conversion)
@@ -608,17 +504,17 @@ fn frame_to_bgra(frame: &Frame) -> Result<Mat, Box<dyn std::error::Error + Send 
     Ok(bgra)
 }
 
-fn bgra_to_format(
-    bgra: &Mat,
+fn image_to_format(
+    image: &Mat,
     format: VideoFormat,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
     if matches!(format, VideoFormat::NV12) {
         let mut i420 = Mat::default();
-        imgproc::cvt_color(bgra, &mut i420, imgproc::COLOR_BGRA2YUV_I420, 0)?;
+        imgproc::cvt_color(image, &mut i420, imgproc::COLOR_BGRA2YUV_I420, 0)?;
         let width =
-            usize::try_from(bgra.cols()).map_err(|_| invalid_frame("frame width is too large"))?;
-        let height =
-            usize::try_from(bgra.rows()).map_err(|_| invalid_frame("frame height is too large"))?;
+            usize::try_from(image.cols()).map_err(|_| invalid_frame("frame width is too large"))?;
+        let height = usize::try_from(image.rows())
+            .map_err(|_| invalid_frame("frame height is too large"))?;
         let luma_len = width
             .checked_mul(height)
             .ok_or_else(|| invalid_frame("frame dimensions overflow"))?;
@@ -634,17 +530,16 @@ fn bgra_to_format(
     }
     let mut output = Mat::default();
     let conversion = match format {
-        VideoFormat::BGRA => {
-            bgra.copy_to(&mut output)?;
+        VideoFormat::BGR | VideoFormat::BGRA => {
+            image.copy_to(&mut output)?;
             return Ok(output.data_bytes()?.to_vec());
         }
         VideoFormat::RGB => imgproc::COLOR_BGRA2RGB,
-        VideoFormat::BGR => imgproc::COLOR_BGRA2BGR,
         VideoFormat::RGBA => imgproc::COLOR_BGRA2RGBA,
         VideoFormat::I420 => imgproc::COLOR_BGRA2YUV_I420,
         VideoFormat::NV12 => unreachable!(),
     };
-    imgproc::cvt_color(bgra, &mut output, conversion, 0)?;
+    imgproc::cvt_color(image, &mut output, conversion, 0)?;
     Ok(output.data_bytes()?.to_vec())
 }
 
@@ -791,28 +686,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn falls_back_to_opencv_when_gpu_is_unavailable() {
-        let middleware = StabilizationMiddleware::new(StabilizationConfig {
-            border_crop: 0,
-            frame_scale: 1.0,
-            ..StabilizationConfig::default()
-        })
-        .expect("valid stabilization config");
-        middleware
-            .gpu
-            .set(None)
-            .expect("GPU context should not be initialized yet");
-
-        let processed = middleware
-            .process_async(frame_with_motion(translated_matches(2.0, 1.0)))
-            .await
-            .expect("CPU fallback should stabilize the frame");
-
-        assert_eq!((processed.width, processed.height), (64, 48));
-        assert_eq!(processed.data.len(), 64 * 48 * 4);
-    }
-
-    #[tokio::test]
     async fn default_crop_produces_aspect_ratio_adjusted_output_dimensions() {
         let middleware = StabilizationMiddleware::new(StabilizationConfig {
             frame_scale: 1.0,
@@ -894,8 +767,8 @@ mod tests {
 
         for (format, bytes_per_pixel) in [
             (VideoFormat::RGB, 3),
-            (VideoFormat::BGR, 3),
             (VideoFormat::RGBA, 4),
+            (VideoFormat::BGR, 3),
             (VideoFormat::BGRA, 4),
             (VideoFormat::I420, 0),
             (VideoFormat::NV12, 0),
@@ -905,7 +778,8 @@ mod tests {
             } else {
                 8 * 8 * bytes_per_pixel
             };
-            let frame = Frame::new(Bytes::from(vec![128; len]), 8, 8, format.clone());
+            let pixels = (0..len).map(|index| index as u8).collect::<Vec<_>>();
+            let frame = Frame::new(Bytes::from(pixels.clone()), 8, 8, format.clone());
             frame
                 .metadata
                 .write()
@@ -922,6 +796,9 @@ mod tests {
             );
             assert_eq!((processed.width, processed.height), (8, 8));
             assert_eq!(processed.data.len(), len);
+            if matches!(format, VideoFormat::BGR | VideoFormat::BGRA) {
+                assert_eq!(processed.data.as_ref().as_ref(), pixels.as_slice());
+            }
         }
     }
 
