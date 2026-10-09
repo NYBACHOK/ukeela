@@ -19,7 +19,7 @@ rust_2018_idioms = "deny"
 # missing_docs = "deny"
 missing_debug_implementations = "allow"
 future_incompatible = "deny"
-unsafe-code = "deny"
+unsafe_code = "deny"
 
 [workspace.lints.clippy]
 unused_async = "deny"
