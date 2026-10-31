@@ -1,17 +1,8 @@
-pub mod ema;
-pub mod feature_points;
-pub mod gpu_warp;
-pub mod stabilization;
+pub mod feature_detection;
+
+use crate::{frame::Frame, middleware::feature_detection::fast::FastFeatureDetectionMiddleware};
 
 pub mod chain;
-use crate::{
-    frame::Frame,
-    middleware::{
-        ema::EmaMiddleware,
-        feature_points::{cpu::FeaturePointsMiddleware, opencv::FeatureDetectionMiddleware},
-    },
-};
-use stabilization::StabilizationMiddleware;
 
 /// Process a frame - returns modified frame or error
 pub type ProcessResult = Result<Frame, Box<dyn std::error::Error + Send + Sync>>;
@@ -28,16 +19,6 @@ pub trait Middleware: Send + Sync {
 
     /// Process frame asynchronously (for async pipelines)
     fn process_async(&self, frame: Frame) -> impl Future<Output = ProcessResult>;
-
-    /// Check if middleware can use GPU acceleration
-    fn has_gpu_support(&self) -> bool {
-        false
-    }
-
-    /// Estimated processing latency in ms
-    fn estimated_latency(&self) -> f32 {
-        5.0 // 5ms default
-    }
 
     // fn reset(&self) // TODO: is it make sense?
 }
@@ -59,30 +40,33 @@ impl Middleware for NoOpMiddleware {
 #[derive(Debug)]
 pub enum MiddlewareDisplatch {
     NoOp(NoOpMiddleware),
-    Ema(EmaMiddleware),
-    FeaturePoints(FeaturePointsMiddleware),
-    OpenCVFeatures(FeatureDetectionMiddleware),
-    Stabilization(StabilizationMiddleware),
+    Fast(FastFeatureDetectionMiddleware),
+    // Ema(EmaMiddleware),
+    // FeaturePoints(FeaturePointsMiddleware),
+    // OpenCVFeatures(FeatureDetectionMiddleware),
+    // Stabilization(StabilizationMiddleware),
 }
 
 impl Middleware for MiddlewareDisplatch {
     fn name(&self) -> &'static str {
         match self {
-            MiddlewareDisplatch::NoOp(v) => v.name(),
-            MiddlewareDisplatch::Ema(v) => v.name(),
-            MiddlewareDisplatch::FeaturePoints(v) => v.name(),
-            MiddlewareDisplatch::OpenCVFeatures(v) => v.name(),
-            MiddlewareDisplatch::Stabilization(v) => v.name(),
+            Self::NoOp(v) => v.name(),
+            Self::Fast(v) => v.name(),
+            // MiddlewareDisplatch::Ema(v) => v.name(),
+            // MiddlewareDisplatch::FeaturePoints(v) => v.name(),
+            // MiddlewareDisplatch::OpenCVFeatures(v) => v.name(),
+            // MiddlewareDisplatch::Stabilization(v) => v.name(),
         }
     }
 
     async fn process_async(&self, frame: Frame) -> ProcessResult {
         match self {
-            MiddlewareDisplatch::NoOp(v) => v.process_async(frame).await,
-            MiddlewareDisplatch::Ema(v) => v.process_async(frame).await,
-            MiddlewareDisplatch::FeaturePoints(v) => v.process_async(frame).await,
-            MiddlewareDisplatch::OpenCVFeatures(v) => v.process_async(frame).await,
-            MiddlewareDisplatch::Stabilization(v) => v.process_async(frame).await,
+            Self::NoOp(v) => v.process_async(frame).await,
+            Self::Fast(v) => v.process_async(frame).await,
+            // MiddlewareDisplatch::Ema(v) => v.process_async(frame).await,
+            // MiddlewareDisplatch::FeaturePoints(v) => v.process_async(frame).await,
+            // MiddlewareDisplatch::OpenCVFeatures(v) => v.process_async(frame).await,
+            // MiddlewareDisplatch::Stabilization(v) => v.process_async(frame).await,
         }
     }
 }

@@ -3,12 +3,7 @@ use std::num::NonZero;
 use crate::{
     middleware::{
         chain::ProcessingChain,
-        ema::{EmaMiddleware, config::EmaConfig},
-        feature_points::{
-            cpu::FeaturePointsMiddleware,
-            opencv::{FeatureConfig, FeatureDetectionMiddleware},
-        },
-        stabilization::{StabilizationConfig, StabilizationMiddleware},
+        feature_detection::{FeatureDetectionConfig, fast::FastFeatureDetectionMiddleware},
     },
     pipeline::{
         FramePipeline,
@@ -27,11 +22,12 @@ pub const DEFAULT_CHANELLS_SIZE: usize = 32;
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, derive_more::Display, clap::ValueEnum,
 )]
 #[display(rename_all = "lowercase")]
-pub enum FeaturePointsBackend {
-    Cpu,
-    #[display("open-cv")]
-    OpenCV,
-    OpenCVWithOpenCL,
+pub enum FeaturePointsMethod {
+    Fast,
+    Ord,
+    // #[display("open-cv")]
+    // OpenCV,
+    // OpenCVWithOpenCL,
     // Vulkan,
     // OpenCL,
 }
@@ -42,14 +38,8 @@ pub struct ProcessingChainFlags {
     /// Total percentage cropped from each frame dimension, split across opposite edges.
     #[arg(long, global = true, default_value_t = 25, value_parser = clap::value_parser!(u8).range(1..100), required = false)]
     pub crop_percent: u8,
-    /// Use ema with reading of movement vectors if they available
-    #[arg(long, global = true, default_value_t = false, required = false)]
-    pub use_ema: bool,
-    /// Open a window showing detected and tracked feature points.
-    #[arg(long, global = true, default_value_t = false, required = false)]
-    pub opencv_debug_features: bool,
-    #[arg(long,global = true, default_value_t = FeaturePointsBackend::OpenCV, required = false)]
-    pub features_backend: FeaturePointsBackend,
+    #[arg(long,global = true, default_value_t = FeaturePointsMethod::Fast, required = false)]
+    pub features_method: FeaturePointsMethod,
 }
 
 pub async fn run(
@@ -112,68 +102,24 @@ pub async fn run(
 fn build_processing_chain(
     ProcessingChainFlags {
         crop_percent,
-        use_ema,
-        opencv_debug_features,
-        features_backend,
+        features_method,
     }: ProcessingChainFlags,
 ) -> Result<ProcessingChain, anyhow::Error> {
     let mut chain = ProcessingChain::new();
     let feature_frame_scale = f32::from(crop_percent) / 100.0;
 
-    if use_ema {
-        chain = chain.add_middleware(middleware::MiddlewareDisplatch::Ema(EmaMiddleware::new(
-            EmaConfig::default(),
-        )));
-    }
-
-    chain = chain.add_middleware(match features_backend {
-        FeaturePointsBackend::Cpu => {
-            middleware::MiddlewareDisplatch::FeaturePoints(FeaturePointsMiddleware)
-        }
-        FeaturePointsBackend::OpenCV => middleware::MiddlewareDisplatch::OpenCVFeatures(
-            FeatureDetectionMiddleware::new(FeatureConfig {
+    chain = chain.add_middleware(match features_method {
+        FeaturePointsMethod::Fast => middleware::MiddlewareDisplatch::Fast(
+            FastFeatureDetectionMiddleware::new(FeatureDetectionConfig {
                 frame_scale: feature_frame_scale,
-                crop_percent: Some(crop_percent),
-                border_crop: 50,
-                debug_features: opencv_debug_features,
-                ..FeatureConfig::default()
-            })
-            .map_err(anyhow::Error::msg)?,
+                num_features: 200,
+                distance_to_border: 50,
+                fast_threshold: 30,
+                debug_features: false,
+            })?,
         ),
-        FeaturePointsBackend::OpenCVWithOpenCL => {
-            if opencv::core::have_opencl()? {
-                opencv::core::set_use_opencl(true)?;
-                tracing::info!("OpenCL enabled: {}", opencv::core::use_opencl()?);
-            } else {
-                tracing::warn!(
-                    "OpenCL is not supported or drivers are missing. Falling back to CPU."
-                );
-            }
-
-            middleware::MiddlewareDisplatch::OpenCVFeatures(
-                FeatureDetectionMiddleware::new(FeatureConfig {
-                    frame_scale: feature_frame_scale,
-                    crop_percent: Some(crop_percent),
-                    border_crop: 50,
-                    debug_features: opencv_debug_features,
-                    num_features: 200,
-                    ..FeatureConfig::default()
-                })
-                .map_err(anyhow::Error::msg)?,
-            )
-        }
+        FeaturePointsMethod::Ord => todo!(),
     });
-
-    chain = chain.add_middleware(middleware::MiddlewareDisplatch::Stabilization(
-        StabilizationMiddleware::new(StabilizationConfig {
-            crop_percent: Some(crop_percent),
-            frame_scale: feature_frame_scale,
-            q_scale: 0.0005,
-            r_scale: 3.0,
-            ..StabilizationConfig::default()
-        })
-        .map_err(anyhow::Error::msg)?,
-    ));
 
     Ok(chain)
 }

@@ -18,16 +18,17 @@ derive_more = { version = "2.1", features = ["display"]}
 anyhow = "1.0"
 dirs = "7.0"
 futures-util = "0.3"
-fearless_simd = {version = "1.0", features = ["force_support_fallback"]}
-fearless_simd_macros = "0.1"
+# fearless_simd = {version = "1.0", features = ["force_support_fallback"]}
+# fearless_simd_macros = "0.1"
 
 # GStreamer bindings
 gstreamer = "0.25"
 gstreamer-app = "0.25"
 gstreamer-video = "0.25"
 gstreamer-base = "0.25"
-opencv = { version = "0.101", features = ["clang-runtime", "calib3d"] }
-wgpu = "30.0"
+# opencv = { version = "0.101", features = ["clang-runtime", "calib3d"] }
+# wgpu = "30.0"
+purecv = { version = "0.11", features = ["simd", "parallel"]}
 
 tokio = { version = "1.35", features = ["full"] }
 # crossbeam = "0.8"`
@@ -40,7 +41,6 @@ serde = { version = "1.0", features = ["derive"] }
 tracing = { version = "0.1", features = [] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"
-
 
 [[bin]]
 name = "ukeela"
