@@ -1,5 +1,3 @@
-use std::num::NonZero;
-
 use crate::{
     middleware::{
         chain::ProcessingChain,
@@ -7,7 +5,7 @@ use crate::{
     },
     pipeline::{
         FramePipeline,
-        gst::{GstInputConfig, GstInputReader, GstOutputConfig, GstOutputWriter, GstPixelFormat},
+        gst::{GstInputConfig, GstInputReader, GstOutputConfig, GstOutputWriter},
     },
 };
 
@@ -43,57 +41,59 @@ pub struct ProcessingChainFlags {
 
 pub async fn run(
     channel_size: usize,
-    processing_fps: NonZero<u32>,
     show_fps: bool,
     input_cfg: GstInputConfig,
     output_cfg: GstOutputConfig,
-    output_format: GstPixelFormat,
     flags: ProcessingChainFlags,
 ) -> Result<(), Box<dyn std::error::Error>> {
     gstreamer::init()?;
 
     let chain = build_processing_chain(flags)?;
 
-    let (mut pipeline, input_handle, output_handle) =
-        FramePipeline::new(chain, channel_size, processing_fps);
-    let output_writer = GstOutputWriter::try_new(output_cfg, show_fps, output_format)?;
-    let input_reader = GstInputReader::try_new(input_cfg)?;
+    let (pipeline, input_handle, output_handle, mut stats_rx) =
+        FramePipeline::new(chain, channel_size);
+    let output_writer = GstOutputWriter::try_new(output_cfg, pipeline.clone(), show_fps)?;
+    let input_reader = GstInputReader::try_new(input_cfg, pipeline.clone())?;
 
     output_writer.start_output_thread(output_handle);
     input_reader.start_input_thread(input_handle);
 
+    let mut close_signal = pipeline.subscribe();
+
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::pin!(ctrl_c);
     loop {
-        tokio::select! {
-            ctrl_c_result = &mut ctrl_c => {
-                match ctrl_c_result {
-                    Ok(()) => tracing::warn!("Ctrl+C received, initiating graceful shutdown..."),
-                    Err(err) => tracing::error!("Failed to listen for shutdown signal: {}", err),
-                }
+        let stats = tokio::select! {
+            _ctrl_c_result = &mut ctrl_c => {
+                tracing::warn!("Ctrl+C received, initiating graceful shutdown...");
+
+                pipeline.shutdown();
                 break;
             }
-
-            stats = pipeline.stats_rx.recv() => {
+            _signal = close_signal.recv() => {
+                break;
+            }
+            stats = stats_rx.recv() => {
                 match stats {
-                    Ok(stats) => tracing::info!(
-                        frames_processed = stats.frames_processed,
-                        avg_fps = stats.avg_fps,
-                        dropped_frames = stats.dropped_frames,
-                        current_width = stats.current_width,
-                        current_height = stats.current_height,
-                        avg_processing_time_ms = stats.avg_processing_time_ms,
-                        middleware_processing_times_ms = ?stats.middleware_processing_times_ms,
-                        "Pipeline statistics for the last interval"
-                    ),
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                        tracing::warn!("Skipped {} pipeline statistics updates", skipped);
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    Ok(stats) =>stats,
+                    _ => continue,
                 }
             }
-        }
+        };
+
+        tracing::info!(
+            frames_processed = stats.frames_processed,
+            avg_fps = stats.avg_fps,
+            dropped_frames = stats.dropped_frames,
+            current_width = stats.current_width,
+            current_height = stats.current_height,
+            avg_processing_time_ms = stats.avg_processing_time_ms,
+            middleware_processing_times_ms = ?stats.middleware_processing_times.into_iter().map(| (key, val) |(key, val.as_secs_f64() * 1000.0)).collect::<Vec<_>>(),
+            "Pipeline statistics"
+        )
     }
+
+    // pipeline.closed().await;
 
     Ok(())
 }

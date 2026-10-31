@@ -1,33 +1,25 @@
 use anyhow::Context;
-use bytes::Bytes;
 use gstreamer::{
     glib::object::{Cast, ObjectExt},
     prelude::{ElementExt, GstBinExt},
 };
 
-use crate::{
-    frame::{Frame, VideoFormat},
-    pipeline::{
-        gst::{GstOutputConfig, GstPixelFormat},
-        output::OutputHandle,
-    },
-};
+use crate::pipeline::{FramePipeline, gst::GstOutputConfig, output::OutputHandle};
 
 pub struct GstOutputWriter {
     pipeline: gstreamer::Pipeline,
     appsrc: gstreamer_app::AppSrc,
     framerate: Option<i32>,
     fps_overlay: Option<gstreamer::Element>,
-    output_format: GstPixelFormat,
+    frame_pipeline: FramePipeline,
 }
 
 impl GstOutputWriter {
     pub fn try_new(
         cfg: GstOutputConfig,
+        frame_pipeline: FramePipeline,
         show_fps: bool,
-        output_format: GstPixelFormat,
     ) -> anyhow::Result<Self> {
-        let format = output_format.as_gst_str();
         let overlay_stage = if show_fps {
             " ! textoverlay name=fps_overlay text=\"FPS: --\" halignment=left valignment=top"
         } else {
@@ -35,30 +27,20 @@ impl GstOutputWriter {
         };
 
         let (pipeline_str, framerate) = match cfg {
-            GstOutputConfig::Display { width, height } => (
+            GstOutputConfig::Display { .. } => (
                 format!(
-                    "appsrc name=src caps=\"video/x-raw,width={},height={},format={}\" ! \
-                     videoconvert{} ! videoconvert ! autovideosink sync=false",
-                    width, height, format, overlay_stage
+                    "appsrc name=src ! videoconvert{} ! videoconvert ! autovideosink sync=false",
+                    overlay_stage,
                 ),
                 None,
             ),
-            GstOutputConfig::File {
-                path,
-                width,
-                height,
-                fps,
-            } => (
+            GstOutputConfig::File { path, fps, .. } => (
                 format!(
-                    "appsrc name=src caps=\"video/x-raw,width={},height={},format={},framerate={}/1\" ! \
-                     videoconvert{} ! x264enc speed-preset=ultrafast tune=zerolatency ! \
+                    "appsrc name=src{} ! \
+                     x264enc speed-preset=ultrafast tune=zerolatency ! \
                      h264parse ! mp4mux ! filesink location=\"{}\"",
-                    width,
-                    height,
-                    format,
-                    fps,
                     overlay_stage,
-                    path.to_string_lossy()
+                    path.to_string_lossy(),
                 ),
                 Some(i32::try_from(fps).context("Output frame rate exceeds GStreamer limits")?),
             ),
@@ -95,7 +77,7 @@ impl GstOutputWriter {
             appsrc,
             framerate,
             fps_overlay,
-            output_format,
+            frame_pipeline,
         })
     }
 
@@ -105,14 +87,18 @@ impl GstOutputWriter {
             appsrc,
             framerate,
             fps_overlay,
-            output_format,
+            frame_pipeline,
         } = self;
 
-        let _ = pipeline
-            .set_state(gstreamer::State::Playing)
-            .inspect_err(|e| tracing::error!(error = ?e, "Changing state of Egress"));
+        if let Err(e) = pipeline.set_state(gstreamer::State::Playing) {
+            tracing::error!(error = ?e, "Changing state of Egress");
+
+            frame_pipeline.shutdown();
+            return;
+        }
 
         tokio::spawn(async move {
+            // TODO: Exit if stop signal
             // Keep pipeline alive inside the async block for the lifetime of the stream
             let _pipeline = pipeline;
 
@@ -129,8 +115,10 @@ impl GstOutputWriter {
                     continue;
                 };
 
-                // Update caps only when frame dimensions change
-                let format = output_format.as_gst_str();
+                let format = match &frame.format {
+                    crate::frame::VideoFormat::BGR => "BGR",
+                    crate::frame::VideoFormat::BGRA => "BGRA",
+                };
                 if last_caps != Some((width, height, format)) {
                     let mut caps_builder = gstreamer::Caps::builder("video/x-raw")
                         .field("width", width)
@@ -151,13 +139,7 @@ impl GstOutputWriter {
                     overlay.set_property("text", format!("FPS: {fps_val:.1}"));
                 }
 
-                let frame_data = match output_frame_data(&frame, output_format) {
-                    Ok(data) => data,
-                    Err(error) => {
-                        tracing::error!(%error, frame_id = frame.id, "Failed to prepare output frame");
-                        continue;
-                    }
-                };
+                let frame_data = frame.data.as_ref();
 
                 // Convert Frame to GStreamer buffer
                 let mut buffer = gstreamer::Buffer::with_size(frame_data.len())
@@ -170,7 +152,7 @@ impl GstOutputWriter {
                     buffer_mut.set_pts(pts);
 
                     let mut map = buffer_mut.map_writable().unwrap();
-                    map.copy_from_slice(&frame_data);
+                    map.copy_from_slice(frame_data);
                 }
 
                 // Push buffer to pipeline
@@ -208,94 +190,5 @@ impl GstOutputWriter {
                 }
             }
         });
-    }
-}
-
-fn output_frame_data(frame: &Frame, output_format: GstPixelFormat) -> anyhow::Result<Bytes> {
-    let source_format = match frame.format {
-        VideoFormat::BGR => GstPixelFormat::Bgr,
-        VideoFormat::BGRA => GstPixelFormat::Bgra,
-    };
-
-    if source_format == output_format {
-        return Ok((*frame.data).clone());
-    }
-
-    let width = usize::try_from(frame.width).context("Frame width exceeds platform limits")?;
-    let height = usize::try_from(frame.height).context("Frame height exceeds platform limits")?;
-    let pixels = width
-        .checked_mul(height)
-        .context("Frame dimensions overflow")?;
-    let source_channels = match source_format {
-        GstPixelFormat::Bgr => 3,
-        GstPixelFormat::Bgra => 4,
-    };
-    let expected_len = pixels
-        .checked_mul(source_channels)
-        .context("Frame buffer size overflow")?;
-    anyhow::ensure!(
-        frame.data.len() == expected_len,
-        "Frame buffer length does not match its dimensions and pixel format"
-    );
-
-    let output_channels = match output_format {
-        GstPixelFormat::Bgr => 3,
-        GstPixelFormat::Bgra => 4,
-    };
-    let mut output = Vec::with_capacity(
-        pixels
-            .checked_mul(output_channels)
-            .context("Output frame buffer size overflow")?,
-    );
-    match (source_format, output_format) {
-        (GstPixelFormat::Bgr, GstPixelFormat::Bgra) => {
-            for pixel in frame.data.chunks_exact(3) {
-                output.extend_from_slice(pixel);
-                output.push(255);
-            }
-        }
-        (GstPixelFormat::Bgra, GstPixelFormat::Bgr) => {
-            for pixel in frame.data.chunks_exact(4) {
-                output.extend_from_slice(&pixel[..3]);
-            }
-        }
-        _ => unreachable!("matching input and output formats returned above"),
-    }
-    Ok(Bytes::from(output))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use bytes::Bytes;
-
-    #[test]
-    fn converts_bgr_to_bgra() {
-        let frame = Frame::new(
-            Bytes::from_static(&[1, 2, 3, 4, 5, 6]),
-            2,
-            1,
-            VideoFormat::BGR,
-        );
-
-        assert_eq!(
-            output_frame_data(&frame, GstPixelFormat::Bgra).expect("valid BGR frame"),
-            Bytes::from_static(&[1, 2, 3, 255, 4, 5, 6, 255])
-        );
-    }
-
-    #[test]
-    fn converts_bgra_to_bgr() {
-        let frame = Frame::new(
-            Bytes::from_static(&[1, 2, 3, 10, 4, 5, 6, 20]),
-            2,
-            1,
-            VideoFormat::BGRA,
-        );
-
-        assert_eq!(
-            output_frame_data(&frame, GstPixelFormat::Bgr).expect("valid BGRA frame"),
-            Bytes::from_static(&[1, 2, 3, 4, 5, 6])
-        );
     }
 }

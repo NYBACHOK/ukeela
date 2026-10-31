@@ -1,8 +1,3 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, AtomicU64, Ordering},
-};
-
 use tokio::sync::{
     broadcast,
     mpsc::error::{SendError, TrySendError},
@@ -14,25 +9,25 @@ use crate::frame::Frame;
 pub(super) type IngressFrame = (u64, Frame);
 
 /// Handle for feeding frames into the latest-frame ingress slot.
-#[derive(Clone)]
 pub struct InputHandle {
-    pub(super) tx: watch::Sender<Option<IngressFrame>>,
-    pub(super) sequence: Arc<AtomicU64>,
-    pub(super) closed: Arc<AtomicBool>,
-    pub(super) shutdown_rx: Arc<broadcast::Receiver<()>>,
+    pub(super) tx: watch::Sender<IngressFrame>,
+    pub(super) sequence: u64,
+    pub(super) shutdown_rx: broadcast::Receiver<()>,
 }
 
 impl std::fmt::Debug for InputHandle {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("InputHandle")
-            .field("closed", &self.closed.load(Ordering::Relaxed))
             .finish_non_exhaustive()
     }
 }
 
 impl InputHandle {
-    pub fn send_frame(&self, frame: Frame) -> impl Future<Output = Result<(), SendError<Frame>>> {
+    pub fn send_frame(
+        &mut self,
+        frame: Frame,
+    ) -> impl Future<Output = Result<(), SendError<Frame>>> {
         async move {
             match self.send_frame_nonblocking(frame) {
                 Ok(_) => Ok(()),
@@ -43,22 +38,21 @@ impl InputHandle {
         }
     }
 
-    pub fn send_frame_nonblocking(&self, mut frame: Frame) -> Result<bool, TrySendError<Frame>> {
-        if self.closed.load(Ordering::Acquire) || self.tx.is_closed() {
+    pub fn send_frame_nonblocking(
+        &mut self,
+        mut frame: Frame,
+    ) -> Result<bool, TrySendError<Frame>> {
+        if self.shutdown_rx.try_recv().is_ok() || self.tx.is_closed() {
             return Err(TrySendError::Closed(frame));
         }
 
-        let sequence = self.sequence.fetch_add(1, Ordering::Relaxed) + 1;
-        {
-            let metadata = &mut frame.metadata;
-            metadata.original_order = Some(sequence);
-            metadata.order = Some(sequence);
-        }
-        self.tx.send_replace(Some((sequence, frame)));
-        Ok(true)
-    }
+        self.sequence += 1;
 
-    pub fn subscribe_shutdown(&self) -> broadcast::Receiver<()> {
-        self.shutdown_rx.resubscribe()
+        frame.metadata.original_order = Some(self.sequence);
+        frame.metadata.order = Some(self.sequence);
+
+        self.tx.send_replace((self.sequence, frame));
+
+        Ok(true)
     }
 }

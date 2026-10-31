@@ -1,11 +1,10 @@
 use tokio::sync::mpsc::Receiver;
 
-use crate::{frame::Frame, pipeline::input::InputHandle};
+use crate::frame::Frame;
 
 /// Handle for reading frames from pipeline (used by output thread)
 pub struct OutputHandle {
     pub(super) rx: Receiver<Frame>,
-    pub(super) tx: InputHandle, // For re-emission if needed
 }
 
 impl OutputHandle {
@@ -18,11 +17,5 @@ impl OutputHandle {
             .await
             .ok()
             .flatten()
-    }
-
-    /// Access input handle if you need to re-emission frame
-    #[inline]
-    pub fn input(&self) -> &InputHandle {
-        &self.tx
     }
 }

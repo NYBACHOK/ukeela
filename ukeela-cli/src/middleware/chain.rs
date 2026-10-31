@@ -27,20 +27,19 @@ impl ProcessingChain {
             let frame_id = frame.id;
             let processed = mw.process_async(frame).await;
             let elapsed = mw_start.elapsed();
-            let middleware_name = mw.name();
 
             frame = match processed {
                 Ok(mut processed) => {
                     processed
                         .metadata
                         .processing_time
-                        .insert(middleware_name, elapsed);
+                        .insert(mw.name(), elapsed);
                     processed
                 }
                 Err(error) => {
-                    tracing::debug!(
+                    tracing::error!(
                         frame_id,
-                        middleware = middleware_name,
+                        middleware = mw.name(),
                         processing_time_ms = elapsed.as_secs_f64() * 1000.0,
                         failed = true,
                         "Middleware processing failed"
@@ -51,7 +50,7 @@ impl ProcessingChain {
 
             tracing::trace!(
                 frame_id,
-                middleware = middleware_name,
+                middleware = mw.name(),
                 processing_time_ms = elapsed.as_secs_f64() * 1000.0,
                 failed = false,
                 "Middleware processing completed"

@@ -1,13 +1,14 @@
 use bytes::Bytes;
 use std::{
     collections::HashMap,
+    str::FromStr,
     sync::Arc,
     time::{Duration, Instant},
 };
 use time::UtcDateTime;
 
 /// Shared frame buffer to minimize allocations
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Frame {
     pub id: u64,
     pub timestamp: Duration,
@@ -20,10 +21,25 @@ pub struct Frame {
     pub metadata: FrameMetadata,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum VideoFormat {
+    #[default]
     BGR,
     BGRA,
+}
+
+impl FromStr for VideoFormat {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let res = match s.to_ascii_lowercase().as_str() {
+            "bgr" => Self::BGR,
+            "bgra" => Self::BGRA,
+            _ => return Err(format!("unknow video format : {s}")),
+        };
+
+        Ok(res)
+    }
 }
 
 #[derive(Default, Clone)]

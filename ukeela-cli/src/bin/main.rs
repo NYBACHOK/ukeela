@@ -1,11 +1,7 @@
 use std::{path::PathBuf, time::Duration};
 
 use clap::Parser;
-use ukeela_cli::{
-    DEFAULT_CHANELLS_SIZE, ProcessingChainFlags,
-    pipeline::gst::{GstInputConfig, GstPixelFormat},
-    run,
-};
+use ukeela_cli::{DEFAULT_CHANELLS_SIZE, ProcessingChainFlags, pipeline::gst::GstInputConfig, run};
 
 #[derive(clap::Parser, Clone)]
 pub struct Args {
@@ -14,14 +10,6 @@ pub struct Args {
 
     #[arg(long, default_value_t = DEFAULT_CHANELLS_SIZE, help = "Output queue capacity")]
     pub channel_size: usize,
-
-    /// Pixel format used for GStreamer output.
-    #[arg(long, global = true, value_enum, default_value = "bgra")]
-    pub format: GstPixelFormat,
-
-    /// Maximum frame-processing rate before feature detection.
-    #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u32).range(1..121))]
-    pub processing_fps: u32,
 
     /// Display output FPS as a GStreamer video overlay.
     #[arg(long, global = true, default_value_t = false)]
@@ -53,8 +41,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let Args {
         input,
         channel_size,
-        format,
-        processing_fps,
         chain_flags,
         show_fps,
         log_level,
@@ -70,15 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     let output = input.output();
-    runtime.block_on(run(
-        channel_size,
-        processing_fps.try_into().expect("checked by clap"),
-        show_fps,
-        input,
-        output,
-        format,
-        chain_flags,
-    ))?;
+    runtime.block_on(run(channel_size, show_fps, input, output, chain_flags))?;
 
     while runtime.metrics().num_alive_tasks() != 0 {
         std::thread::sleep(Duration::from_millis(100));

@@ -5,21 +5,6 @@ use std::path::PathBuf;
 
 pub use self::{input::*, output::*};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum GstPixelFormat {
-    Bgr,
-    Bgra,
-}
-
-impl GstPixelFormat {
-    pub const fn as_gst_str(self) -> &'static str {
-        match self {
-            Self::Bgr => "BGR",
-            Self::Bgra => "BGRA",
-        }
-    }
-}
-
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum GstInputConfig {
     Camera {
@@ -77,9 +62,9 @@ impl GstInputConfig {
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum GstOutputConfig {
     Display {
-        #[arg(short, long, default_value_t = 1920, required = false)]
+        #[arg(long, default_value_t = 1920, required = false)]
         width: u32,
-        #[arg(short, long, default_value_t = 1080, required = false)]
+        #[arg(long, default_value_t = 1080, required = false)]
         height: u32,
     },
     File {

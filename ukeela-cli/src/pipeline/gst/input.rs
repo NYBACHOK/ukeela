@@ -1,4 +1,6 @@
-use anyhow::Context;
+use std::str::FromStr;
+
+use anyhow::{Context, anyhow};
 use bytes::Bytes;
 use futures_util::StreamExt;
 use gstreamer::{
@@ -8,16 +10,17 @@ use gstreamer::{
 
 use crate::{
     frame::{Frame, VideoFormat},
-    pipeline::{gst::GstInputConfig, input::InputHandle},
+    pipeline::{FramePipeline, gst::GstInputConfig, input::InputHandle},
 };
 
 pub struct GstInputReader {
     pipeline: gstreamer::Pipeline,
     appsink: gstreamer_app::AppSink,
+    frame_pipeline: FramePipeline,
 }
 
 impl GstInputReader {
-    pub fn try_new(cfg: GstInputConfig) -> anyhow::Result<Self> {
+    pub fn try_new(cfg: GstInputConfig, frame_pipeline: FramePipeline) -> anyhow::Result<Self> {
         let pipeline = match cfg {
             GstInputConfig::Camera {
                 camera_device,
@@ -50,7 +53,7 @@ impl GstInputReader {
                 let uri = format!("file://{}", absolute_path.to_string_lossy());
 
                 format!(
-                    "uridecodebin uri=\"{}\" ! videoconvert ! video/x-raw,format=BGRA ! appsink name=sink sync=true emit-signals=true",
+                    "uridecodebin uri=\"{}\" ! appsink name=sink sync=true emit-signals=true",
                     uri
                 )
             }
@@ -73,50 +76,27 @@ impl GstInputReader {
             .downcast::<gstreamer_app::AppSink>()
             .unwrap();
 
-        Ok(Self { pipeline, appsink })
+        Ok(Self {
+            pipeline,
+            appsink,
+            frame_pipeline,
+        })
     }
 
-    pub fn start_input_thread(self, input_handle: InputHandle) {
-        let input_handle_outer = input_handle.clone();
-
-        // Set up callback to push frames
+    pub fn start_input_thread(self, mut input_handle: InputHandle) {
         self.appsink.set_callbacks(
             gstreamer_app::AppSinkCallbacks::builder()
-                .new_sample(move |appsink| {
-                    let sample = appsink
-                        .pull_sample()
-                        .map_err(|_| gstreamer::FlowError::Eos)?;
+                .new_sample({
+                    let frame_pipeline = self.frame_pipeline.clone();
 
-                    // Convert sample to Frame
-                    let caps = sample.caps().ok_or(gstreamer::FlowError::Error)?;
-                    let structure = caps.structure(0).ok_or(gstreamer::FlowError::Error)?;
+                    move |appsink| match process_sample(appsink, &mut input_handle) {
+                        Ok(flow) => Ok(flow),
+                        Err(error) => {
+                            tracing::error!(%error, "Failed to process GStreamer input sample");
+                            frame_pipeline.shutdown();
 
-                    let width = structure.get::<i32>("width").unwrap_or(1920) as u32;
-                    let height = structure.get::<i32>("height").unwrap_or(1080) as u32;
-
-                    let buffer = sample.buffer().ok_or(gstreamer::FlowError::Error)?;
-                    let mapped = buffer
-                        .map_readable()
-                        .map_err(|_| gstreamer::FlowError::Error)?;
-
-                    let data = Bytes::copy_from_slice(&mapped);
-                    let Some(format) = caps_video_format(structure) else {
-                        tracing::error!(
-                            caps = %caps,
-                            "Input caps must specify a supported BGR or BGRA pixel format"
-                        );
-                        return Err(gstreamer::FlowError::NotNegotiated);
-                    };
-                    let frame = Frame::new(data, width, height, format);
-
-                    // Send to pipeline - non-blocking to avoid stalling GStreamer
-                    match input_handle.send_frame_nonblocking(frame) {
-                        Ok(true) => Ok(gstreamer::FlowSuccess::Ok),
-                        Ok(false) => {
-                            tracing::warn!("Backlog full, dropping frame");
-                            Ok(gstreamer::FlowSuccess::Ok) // Drop silently
+                            Err(gstreamer::FlowError::Error)
                         }
-                        Err(_) => Err(gstreamer::FlowError::Eos),
                     }
                 })
                 .build(),
@@ -125,13 +105,13 @@ impl GstInputReader {
         if let Err(e) = self.pipeline.set_state(gstreamer::State::Playing) {
             tracing::error!(error = ?e, "Changing state of Ingress");
 
-            input_handle_outer
-                .closed
-                .store(true, std::sync::atomic::Ordering::Relaxed);
+            self.frame_pipeline.shutdown();
+            return;
         }
 
         let pipeline = self.pipeline;
         tokio::spawn(async move {
+            // TODO: Exit if stop signal
             let bus = match pipeline.bus() {
                 Some(bus) => bus,
                 None => return,
@@ -162,10 +142,34 @@ impl GstInputReader {
     }
 }
 
-fn caps_video_format(structure: &gstreamer::StructureRef) -> Option<VideoFormat> {
-    match structure.get::<String>("format").ok()?.as_str() {
-        "BGR" => Some(VideoFormat::BGR),
-        "BGRA" => Some(VideoFormat::BGRA),
-        _ => None,
-    }
+fn process_sample(
+    appsink: &gstreamer_app::AppSink,
+    input_handle: &mut InputHandle,
+) -> anyhow::Result<gstreamer::FlowSuccess> {
+    let sample = appsink.pull_sample().context("Failed to pull sample")?;
+    let caps = sample.caps().context("Sample has no caps")?;
+    let structure = caps.structure(0).context("Sample caps have no structure")?;
+
+    let width = structure
+        .get::<i32>("width")
+        .context("Sample caps have no valid width")? as u32;
+    let height = structure
+        .get::<i32>("height")
+        .context("Sample caps have no valid height")? as u32;
+    let format = structure
+        .get::<String>("format")
+        .context("Sample caps have no valid pixel format")?;
+    let format = VideoFormat::from_str(&format).map_err(|e| anyhow::anyhow!(e))?;
+
+    let buffer = sample.buffer().context("Sample has no buffer")?;
+    let mapped = buffer
+        .map_readable()
+        .context("Failed to map sample buffer")?;
+    let frame = Frame::new(Bytes::copy_from_slice(&mapped), width, height, format);
+
+    input_handle
+        .send_frame_nonblocking(frame)
+        .map_err(|e| anyhow!("Input handle is closed. Error: {e}"))?;
+
+    Ok(gstreamer::FlowSuccess::Ok)
 }
