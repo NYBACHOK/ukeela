@@ -230,22 +230,17 @@ async fn process_thread(
         let (_, frame) = pending_frame.take().expect("pending frame was checked");
         let start = std::time::Instant::now();
         match chain.process(frame).await {
-            Ok(processed) => {
+            Ok(mut processed) => {
                 let elapsed = start.elapsed();
                 processing_time += elapsed;
                 frames_processed += 1;
                 output_order += 1;
-                processed
-                    .metadata
-                    .write()
-                    .expect(crate::POISONED_LOCK_MSG)
-                    .order = Some(output_order);
+                processed.metadata.order = Some(output_order);
                 current_width = processed.width;
                 current_height = processed.height;
 
                 {
-                    let metadata = processed.metadata.read().expect(crate::POISONED_LOCK_MSG);
-                    for (name, duration) in &metadata.processing_time {
+                    for (name, duration) in &processed.metadata.processing_time {
                         *middleware_processing_time.entry(name).or_default() += *duration;
                     }
                 }

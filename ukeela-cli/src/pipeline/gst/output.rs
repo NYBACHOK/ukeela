@@ -121,7 +121,7 @@ impl GstOutputWriter {
             let mut fps = None;
             let mut last_caps: Option<(i32, i32, &'static str)> = None;
 
-            while let Some(frame) = output_handle.receive_frame().await {
+            while let Some(mut frame) = output_handle.receive_frame().await {
                 let (Ok(width), Ok(height)) =
                     (i32::try_from(frame.width), i32::try_from(frame.height))
                 else {
@@ -176,7 +176,7 @@ impl GstOutputWriter {
                 // Push buffer to pipeline
                 let push_result = appsrc.push_buffer(buffer);
                 let (original_order, changed_order, arrival_time) = {
-                    let metadata = frame.metadata.read().expect(crate::POISONED_LOCK_MSG);
+                    let metadata = &mut frame.metadata;
                     (
                         metadata.original_order,
                         metadata.order,
@@ -215,7 +215,6 @@ fn output_frame_data(frame: &Frame, output_format: GstPixelFormat) -> anyhow::Re
     let source_format = match frame.format {
         VideoFormat::BGR => GstPixelFormat::Bgr,
         VideoFormat::BGRA => GstPixelFormat::Bgra,
-        _ => anyhow::bail!("unsupported input frame format for BGR/BGRA output"),
     };
 
     if source_format == output_format {

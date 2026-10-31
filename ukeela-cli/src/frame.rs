@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use std::{
     collections::HashMap,
-    sync::{Arc, RwLock},
+    sync::Arc,
     time::{Duration, Instant},
 };
 use time::UtcDateTime;
@@ -17,15 +17,11 @@ pub struct Frame {
     /// Actual pixel data - copied only when needed
     pub data: Arc<Bytes>,
     /// Metadata passed through pipeline
-    pub metadata: Arc<RwLock<FrameMetadata>>,
+    pub metadata: FrameMetadata,
 }
 
 #[derive(Clone, Debug)]
 pub enum VideoFormat {
-    I420,
-    NV12,
-    RGB,
-    RGBA,
     BGR,
     BGRA,
 }
@@ -63,7 +59,7 @@ impl Frame {
             height,
             format,
             data: Arc::new(data),
-            metadata: Arc::new(RwLock::new(FrameMetadata::default())),
+            metadata: FrameMetadata::default(),
         }
     }
 

@@ -15,7 +15,6 @@ pub mod frame;
 pub mod middleware;
 pub mod pipeline;
 
-const POISONED_LOCK_MSG: &str = "poisoned lock";
 pub const DEFAULT_CHANELLS_SIZE: usize = 32;
 
 #[derive(

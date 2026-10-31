@@ -1,5 +1,4 @@
 use crate::{
-    POISONED_LOCK_MSG,
     frame::Frame,
     middleware::{Middleware, MiddlewareDisplatch, ProcessResult},
 };
@@ -31,11 +30,9 @@ impl ProcessingChain {
             let middleware_name = mw.name();
 
             frame = match processed {
-                Ok(processed) => {
+                Ok(mut processed) => {
                     processed
                         .metadata
-                        .write()
-                        .expect(POISONED_LOCK_MSG)
                         .processing_time
                         .insert(middleware_name, elapsed);
                     processed

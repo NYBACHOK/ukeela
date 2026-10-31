@@ -9,7 +9,7 @@ use tokio::sync::{
     watch,
 };
 
-use crate::{POISONED_LOCK_MSG, frame::Frame};
+use crate::frame::Frame;
 
 pub(super) type IngressFrame = (u64, Frame);
 
@@ -43,17 +43,16 @@ impl InputHandle {
         }
     }
 
-    pub fn send_frame_nonblocking(&self, frame: Frame) -> Result<bool, TrySendError<Frame>> {
+    pub fn send_frame_nonblocking(&self, mut frame: Frame) -> Result<bool, TrySendError<Frame>> {
         if self.closed.load(Ordering::Acquire) || self.tx.is_closed() {
             return Err(TrySendError::Closed(frame));
         }
 
         let sequence = self.sequence.fetch_add(1, Ordering::Relaxed) + 1;
         {
-            let mut metadata = frame.metadata.write().expect(POISONED_LOCK_MSG);
+            let metadata = &mut frame.metadata;
             metadata.original_order = Some(sequence);
             metadata.order = Some(sequence);
-            metadata.arrival_time = Some(std::time::Instant::now());
         }
         self.tx.send_replace(Some((sequence, frame)));
         Ok(true)
