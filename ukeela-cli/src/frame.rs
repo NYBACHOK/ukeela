@@ -1,9 +1,9 @@
 use bytes::Bytes;
 use purecv::core::Matrix;
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     str::FromStr,
-    sync::{Arc, RwLock},
+    sync::Arc,
     time::{Duration, Instant},
 };
 use time::UtcDateTime;
@@ -54,7 +54,7 @@ impl VideoFormat {
 
 #[derive(Default, Clone)]
 pub struct FrameMetadata {
-    pub grayscale: Option<Arc<RwLock<Matrix<u8>>>>,
+    pub grayscale: Option<Arc<Matrix<u8>>>,
     /// Input order before pacing drops or reorders frames.
     pub original_order: Option<u64>,
     /// Sequential output order assigned after pacing and processing.
@@ -68,7 +68,7 @@ pub struct FrameMetadata {
     /// Detected feature locations in feature-scaled pixel coordinates.
     pub feature_points: Option<Vec<(u32, u32)>>,
     pub estimated_transform: Option<[f32; 6]>,
-    pub processing_time: HashMap<&'static str, Duration>, // Track time per middleware
+    pub processing_time: BTreeMap<&'static str, Duration>, // Track time per middleware
 }
 
 /// A matched feature's coordinates in consecutive, feature-scaled frames.

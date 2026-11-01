@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use purecv::{
     core::Matrix,
@@ -64,7 +64,7 @@ impl GrayscaleMiddleware {
             .await?
             .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-        frame.metadata.grayscale = Some(Arc::new(RwLock::new(grayscale)));
+        frame.metadata.grayscale = Some(Arc::new(grayscale));
 
         Ok(frame)
     }

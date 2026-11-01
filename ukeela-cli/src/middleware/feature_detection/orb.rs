@@ -38,7 +38,7 @@ impl Default for OrbFeatureDetectionMiddleware {
 
 impl Middleware for OrbFeatureDetectionMiddleware {
     fn name(&self) -> &'static str {
-        "purecv_orb_feature_detection"
+        "orb_feature_detection"
     }
 
     fn process_async(&self, frame: Frame) -> impl std::future::Future<Output = ProcessResult> {

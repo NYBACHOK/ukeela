@@ -1,6 +1,6 @@
 pub mod gst;
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     time::{Duration, Instant},
 };
 
@@ -141,7 +141,7 @@ pub struct PipelineStats {
     pub current_width: usize,
     pub current_height: usize,
     pub avg_processing_time_ms: f32,
-    pub middleware_processing_times: HashMap<&'static str, Duration>,
+    pub middleware_processing_times: BTreeMap<&'static str, Duration>,
 }
 
 async fn process_frame(

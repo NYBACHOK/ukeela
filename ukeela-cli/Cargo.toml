@@ -28,7 +28,7 @@ gstreamer-video = "0.25"
 gstreamer-base = "0.25"
 # opencv = { version = "0.101", features = ["clang-runtime", "calib3d"] }
 # wgpu = "30.0"
-purecv = { version = "0.11", features = []} # "simd", "parallel"
+purecv = { version = "0.11", features = ["simd", "parallel"]} # "simd", "parallel"
 
 tokio = { version = "1.35", features = ["full"] }
 # crossbeam = "0.8"`
@@ -45,3 +45,6 @@ tracing-appender = "0.2"
 [[bin]]
 name = "ukeela"
 path = "src/bin/main.rs"
+
+[profile.release]
+opt-level = 3
