@@ -59,6 +59,9 @@ impl FramePipeline {
             let mut processing_time = Duration::ZERO;
             let stats_started = Instant::now();
 
+            let mut clock = Instant::now();
+            const SECOND: Duration = Duration::from_secs(1);
+
             loop {
                 let changed = tokio::select! {
                     _ = shutdown_rx.recv() => return,
@@ -95,9 +98,12 @@ impl FramePipeline {
                 } else {
                     (stats.frames_processed as f32 / elapsed.as_secs_f32()).round() as u8
                 };
-
-                let _ = stats_tx.send(stats.clone());
-                stats.middleware_processing_times.clear();
+                
+                if clock.elapsed() > SECOND {
+                    clock = Instant::now();
+                    let _ = stats_tx.send(stats.clone());
+                    stats.middleware_processing_times.clear();
+                }
             }
         });
 

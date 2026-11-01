@@ -1,7 +1,10 @@
 use crate::{
     middleware::{
         chain::ProcessingChain,
-        feature_detection::{FeatureDetectionConfig, fast::FastFeatureDetectionMiddleware},
+        feature_detection::{
+            FeatureDetectionConfig, fast::FastFeatureDetectionMiddleware,
+            orb::OrbFeatureDetectionMiddleware,
+        },
     },
     pipeline::{
         FramePipeline,
@@ -21,7 +24,7 @@ pub const DEFAULT_CHANELLS_SIZE: usize = 32;
 #[display(rename_all = "lowercase")]
 pub enum FeaturePointsMethod {
     Fast,
-    Ord,
+    Orb,
     // #[display("open-cv")]
     // OpenCV,
     // OpenCVWithOpenCL,
@@ -62,6 +65,7 @@ pub async fn run(
 
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::pin!(ctrl_c);
+
     loop {
         let stats = tokio::select! {
             _ctrl_c_result = &mut ctrl_c => {
@@ -117,8 +121,19 @@ fn build_processing_chain(
                 debug_features: false,
             })?,
         ),
-        FeaturePointsMethod::Ord => todo!(),
+        FeaturePointsMethod::Orb => middleware::MiddlewareDisplatch::Orb(
+            OrbFeatureDetectionMiddleware::new(FeatureDetectionConfig {
+                frame_scale: feature_frame_scale,
+                num_features: 200,
+                distance_to_border: 50,
+                fast_threshold: 30,
+                debug_features: false,
+            })?,
+        ),
     });
+    chain = chain.add_middleware(middleware::MiddlewareDisplatch::FeaturePointOverlay(
+        middleware::feature_point_overlay::FeaturePointOverlayMiddleware::new(feature_frame_scale)?,
+    ));
 
     Ok(chain)
 }

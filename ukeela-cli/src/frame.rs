@@ -54,6 +54,7 @@ pub struct FrameMetadata {
     pub motion_vectors: Option<Vec<(i16, i16)>>,
     /// Previous/current feature locations in feature-scaled pixel coordinates.
     pub motion_matches: Option<Vec<MotionMatch>>,
+    /// Detected feature locations in feature-scaled pixel coordinates.
     pub feature_points: Option<Vec<(u32, u32)>>,
     pub estimated_transform: Option<[f32; 6]>,
     pub processing_time: HashMap<&'static str, Duration>, // Track time per middleware

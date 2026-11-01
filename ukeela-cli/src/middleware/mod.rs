@@ -1,6 +1,12 @@
 pub mod feature_detection;
+pub mod feature_point_overlay;
 
-use crate::{frame::Frame, middleware::feature_detection::fast::FastFeatureDetectionMiddleware};
+use crate::{
+    frame::Frame,
+    middleware::feature_detection::{
+        fast::FastFeatureDetectionMiddleware, orb::OrbFeatureDetectionMiddleware,
+    },
+};
 
 pub mod chain;
 
@@ -41,6 +47,8 @@ impl Middleware for NoOpMiddleware {
 pub enum MiddlewareDisplatch {
     NoOp(NoOpMiddleware),
     Fast(FastFeatureDetectionMiddleware),
+    Orb(OrbFeatureDetectionMiddleware),
+    FeaturePointOverlay(feature_point_overlay::FeaturePointOverlayMiddleware),
     // Ema(EmaMiddleware),
     // FeaturePoints(FeaturePointsMiddleware),
     // OpenCVFeatures(FeatureDetectionMiddleware),
@@ -52,6 +60,8 @@ impl Middleware for MiddlewareDisplatch {
         match self {
             Self::NoOp(v) => v.name(),
             Self::Fast(v) => v.name(),
+            Self::Orb(v) => v.name(),
+            Self::FeaturePointOverlay(v) => v.name(),
             // MiddlewareDisplatch::Ema(v) => v.name(),
             // MiddlewareDisplatch::FeaturePoints(v) => v.name(),
             // MiddlewareDisplatch::OpenCVFeatures(v) => v.name(),
@@ -63,6 +73,8 @@ impl Middleware for MiddlewareDisplatch {
         match self {
             Self::NoOp(v) => v.process_async(frame).await,
             Self::Fast(v) => v.process_async(frame).await,
+            Self::Orb(v) => v.process_async(frame).await,
+            Self::FeaturePointOverlay(v) => v.process_async(frame).await,
             // MiddlewareDisplatch::Ema(v) => v.process_async(frame).await,
             // MiddlewareDisplatch::FeaturePoints(v) => v.process_async(frame).await,
             // MiddlewareDisplatch::OpenCVFeatures(v) => v.process_async(frame).await,
