@@ -98,16 +98,28 @@ impl GstOutputWriter {
         }
 
         tokio::spawn(async move {
-            // TODO: Exit if stop signal
-            // Keep pipeline alive inside the async block for the lifetime of the stream
-            let _pipeline = pipeline;
-
             let mut fps_window_start = std::time::Instant::now();
             let mut frames_in_window = 0u64;
             let mut fps = None;
             let mut last_caps: Option<(i32, i32, &'static str)> = None;
 
-            while let Some(mut frame) = output_handle.receive_frame().await {
+            let mut shutdown_rx = frame_pipeline.subscribe();
+
+            tracing::info!("Started output gst pipeline");
+
+            loop {
+                let mut frame = tokio::select! {
+                    _signal = shutdown_rx.recv() => {
+                        break;
+                    }
+                    frame = output_handle.receive_frame()=> {
+                        match frame {
+                            Some(frame) =>frame,
+                            _ => break,
+                        }
+                    }
+                };
+
                 let (Ok(width), Ok(height)) =
                     (i32::try_from(frame.width), i32::try_from(frame.height))
                 else {
@@ -189,6 +201,10 @@ impl GstOutputWriter {
                     fps_window_start = std::time::Instant::now();
                 }
             }
+
+            let _ = pipeline.set_state(gstreamer::State::Null);
+
+            tracing::info!("Closed output gst pipeline");
         });
     }
 }

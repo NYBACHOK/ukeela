@@ -34,7 +34,7 @@ impl FramePipeline {
         let (ingress_tx, mut ingress_rx) = watch::channel((0, Frame::default()));
         let (output_tx, output_rx) = channel(channel_size);
         let (stats_tx, stats_rx) = broadcast::channel(16);
-        let (shutdown_tx, _) = broadcast::channel(1);
+        let (shutdown_tx, mut shutdown_rx) = broadcast::channel(1);
 
         let pipeline = FramePipeline {
             shutdown_tx: shutdown_tx.clone(),
@@ -47,9 +47,6 @@ impl FramePipeline {
         };
 
         let output_handle = OutputHandle { rx: output_rx };
-
-        // Spawn processing thread
-        let mut shutdown_rx = shutdown_tx.subscribe();
 
         tokio::spawn(async move {
             tracing::info!("Frame pipeline started");
@@ -64,9 +61,10 @@ impl FramePipeline {
 
             loop {
                 let changed = tokio::select! {
-                    _ = shutdown_rx.recv() => return,
+                    _ = shutdown_rx.recv() => break,
                     changed = ingress_rx.changed() => changed,
                 };
+
                 if changed.is_err() {
                     break;
                 }
@@ -98,13 +96,15 @@ impl FramePipeline {
                 } else {
                     (stats.frames_processed as f32 / elapsed.as_secs_f32()).round() as u8
                 };
-                
+
                 if clock.elapsed() > SECOND {
                     clock = Instant::now();
                     let _ = stats_tx.send(stats.clone());
                     stats.middleware_processing_times.clear();
                 }
             }
+
+            tracing::info!("Closed main application pipeline");
         });
 
         (pipeline, input_handle, output_handle, stats_rx)
@@ -117,7 +117,12 @@ impl FramePipeline {
 
     #[inline]
     pub async fn closed(&self) {
-        self.shutdown_tx.closed().await;
+        if tokio::time::timeout(Duration::from_secs(5), self.shutdown_tx.closed())
+            .await
+            .is_err()
+        {
+            tracing::warn!("Failed to wait for resources to release FORCING shutdown");
+        }
     }
 
     #[inline]

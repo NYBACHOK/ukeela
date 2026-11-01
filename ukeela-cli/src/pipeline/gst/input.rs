@@ -84,6 +84,8 @@ impl GstInputReader {
     }
 
     pub fn start_input_thread(self, mut input_handle: InputHandle) {
+        let mut shutdown_rx = input_handle.shutdown_rx.resubscribe();
+
         self.appsink.set_callbacks(
             gstreamer_app::AppSinkCallbacks::builder()
                 .new_sample({
@@ -109,16 +111,28 @@ impl GstInputReader {
             return;
         }
 
-        let pipeline = self.pipeline;
         tokio::spawn(async move {
-            // TODO: Exit if stop signal
-            let bus = match pipeline.bus() {
+            let bus = match self.pipeline.bus() {
                 Some(bus) => bus,
                 None => return,
             };
 
+            tracing::info!("Started input gst pipeline");
+
             let mut stream = bus.stream();
-            while let Some(msg) = stream.next().await {
+            loop {
+                let msg = tokio::select! {
+                    _signal = shutdown_rx.recv() => {
+                        break;
+                    }
+                    msg = stream.next() => {
+                        match msg {
+                            Some(msg) =>msg,
+                            _ => break,
+                        }
+                    }
+                };
+
                 use gstreamer::MessageView;
                 match msg.view() {
                     MessageView::Error(err) => {
@@ -127,17 +141,19 @@ impl GstInputReader {
                             err.error(),
                             err.debug().unwrap_or_default()
                         );
-                        let _ = pipeline.set_state(gstreamer::State::Null);
+
                         break;
                     }
                     MessageView::Eos(..) => {
-                        tracing::info!("End of stream");
-                        let _ = pipeline.set_state(gstreamer::State::Null);
                         break;
                     }
                     _ => {}
                 }
             }
+
+            let _ = self.pipeline.set_state(gstreamer::State::Null);
+
+            tracing::info!("Closed input gst pipeline");
         });
     }
 }

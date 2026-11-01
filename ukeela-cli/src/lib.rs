@@ -60,44 +60,47 @@ pub async fn run(
 
     output_writer.start_output_thread(output_handle);
     input_reader.start_input_thread(input_handle);
+    {
+        let mut close_signal = pipeline.subscribe();
 
-    let mut close_signal = pipeline.subscribe();
+        let ctrl_c = tokio::signal::ctrl_c();
+        tokio::pin!(ctrl_c);
 
-    let ctrl_c = tokio::signal::ctrl_c();
-    tokio::pin!(ctrl_c);
+        loop {
+            let stats = tokio::select! {
+                _ctrl_c_result = &mut ctrl_c => {
+                    tracing::warn!("Ctrl+C received, initiating graceful shutdown...");
 
-    loop {
-        let stats = tokio::select! {
-            _ctrl_c_result = &mut ctrl_c => {
-                tracing::warn!("Ctrl+C received, initiating graceful shutdown...");
-
-                pipeline.shutdown();
-                break;
-            }
-            _signal = close_signal.recv() => {
-                break;
-            }
-            stats = stats_rx.recv() => {
-                match stats {
-                    Ok(stats) =>stats,
-                    _ => continue,
+                    pipeline.shutdown();
+                    break;
                 }
-            }
-        };
+                _signal = close_signal.recv() => {
+                    break;
+                }
+                stats = stats_rx.recv() => {
+                    match stats {
+                        Ok(stats) =>stats,
+                        _ => continue,
+                    }
+                }
+            };
 
-        tracing::info!(
-            frames_processed = stats.frames_processed,
-            avg_fps = stats.avg_fps,
-            dropped_frames = stats.dropped_frames,
-            current_width = stats.current_width,
-            current_height = stats.current_height,
-            avg_processing_time_ms = stats.avg_processing_time_ms,
-            middleware_processing_times_ms = ?stats.middleware_processing_times.into_iter().map(| (key, val) |(key, val.as_secs_f64() * 1000.0)).collect::<Vec<_>>(),
-            "Pipeline statistics"
-        )
+            tracing::info!(
+                frames_processed = stats.frames_processed,
+                avg_fps = stats.avg_fps,
+                dropped_frames = stats.dropped_frames,
+                current_width = stats.current_width,
+                current_height = stats.current_height,
+                avg_processing_time_ms = stats.avg_processing_time_ms,
+                middleware_processing_times_ms = ?stats.middleware_processing_times.into_iter().map(| (key, val) |(key, val.as_secs_f64() * 1000.0)).collect::<Vec<_>>(),
+                "Pipeline statistics"
+            )
+        }
     }
 
-    // pipeline.closed().await;
+    tracing::info!("Waiting for resource cleanup...");
+
+    pipeline.closed().await;
 
     Ok(())
 }
