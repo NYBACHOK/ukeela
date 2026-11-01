@@ -18,7 +18,7 @@ impl GrayscaleMiddleware {
         Self {}
     }
 
-    fn process_frame(&self, mut frame: Frame) -> anyhow::Result<Frame> {
+    async fn process_frame(&self, mut frame: Frame) -> anyhow::Result<Frame> {
         if frame.width == 0 || frame.height == 0 {
             return Err(anyhow::anyhow!("frame dimensions must be non-zero"));
         }
@@ -53,11 +53,16 @@ impl GrayscaleMiddleware {
             packed.extend_from_slice(&frame.data[start..start + row_bytes]);
         }
         let color = Matrix::from_vec(frame.height, frame.width, channels, packed);
-        let grayscale = match frame.format {
-            VideoFormat::BGR => cvt_color_bgr_to_gray(&color),
-            VideoFormat::BGRA => cvt_color_bgra_to_gray(&color),
-        }
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        let grayscale = tokio::runtime::Handle::current()
+            .spawn_blocking({
+                move || match frame.format {
+                    VideoFormat::BGR => cvt_color_bgr_to_gray(&color),
+                    VideoFormat::BGRA => cvt_color_bgra_to_gray(&color),
+                }
+            })
+            .await?
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
 
         frame.metadata.grayscale = Some(Arc::new(RwLock::new(grayscale)));
 
@@ -70,7 +75,7 @@ impl Middleware for GrayscaleMiddleware {
         "grayscale"
     }
 
-    fn process_async(&self, frame: crate::frame::Frame) -> impl Future<Output = ProcessResult> {
-        futures_util::future::ready(self.process_frame(frame).map_err(Into::into))
+    async fn process_async(&self, frame: crate::frame::Frame) -> ProcessResult {
+        self.process_frame(frame).await.map_err(Into::into)
     }
 }
