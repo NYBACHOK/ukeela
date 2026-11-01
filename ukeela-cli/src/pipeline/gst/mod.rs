@@ -48,6 +48,7 @@ pub enum GstInputConfig {
 }
 
 impl GstInputConfig {
+    #[must_use]
     pub fn output(&self) -> GstOutputConfig {
         match self {
             GstInputConfig::Camera { output, .. } => output,

@@ -22,6 +22,7 @@ pub struct FramePipeline {
 
 impl FramePipeline {
     /// Create a pipeline with a bounded output queue and paced latest-frame ingress.
+    #[must_use]
     pub fn new(
         processing_chain: ProcessingChain,
         channel_size: usize,
@@ -126,6 +127,7 @@ impl FramePipeline {
     }
 
     #[inline]
+    #[must_use]
     pub fn subscribe(&self) -> broadcast::Receiver<()> {
         self.shutdown_tx.subscribe()
     }

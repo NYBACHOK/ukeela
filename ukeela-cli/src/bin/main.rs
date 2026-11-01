@@ -11,7 +11,7 @@ pub struct Args {
     #[arg(long, default_value_t = DEFAULT_CHANELLS_SIZE, help = "Output queue capacity")]
     pub channel_size: usize,
 
-    /// Display output FPS as a GStreamer video overlay.
+    /// Display output FPS as a `GStreamer` video overlay.
     #[arg(long, global = true, default_value_t = false)]
     pub show_fps: bool,
 

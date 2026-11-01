@@ -9,12 +9,14 @@ pub struct ProcessingChain {
 }
 
 impl ProcessingChain {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             middlewares: Vec::new(),
         }
     }
 
+    #[must_use]
     pub fn add_middleware(mut self, mw: MiddlewareDisplatch) -> Self {
         self.middlewares.push(mw);
         self
@@ -60,7 +62,11 @@ impl ProcessingChain {
         Ok(frame)
     }
 
+    #[must_use]
     pub fn middleware_names(&self) -> Vec<&str> {
-        self.middlewares.iter().map(|m| m.name()).collect()
+        self.middlewares
+            .iter()
+            .map(super::Middleware::name)
+            .collect()
     }
 }

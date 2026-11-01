@@ -24,17 +24,10 @@ impl std::fmt::Debug for InputHandle {
 }
 
 impl InputHandle {
-    pub fn send_frame(
-        &mut self,
-        frame: Frame,
-    ) -> impl Future<Output = Result<(), SendError<Frame>>> {
-        async move {
-            match self.send_frame_nonblocking(frame) {
-                Ok(_) => Ok(()),
-                Err(TrySendError::Closed(frame) | TrySendError::Full(frame)) => {
-                    Err(SendError(frame))
-                }
-            }
+    pub async fn send_frame(&mut self, frame: Frame) -> Result<(), SendError<Frame>> {
+        match self.send_frame_nonblocking(frame) {
+            Ok(_) => Ok(()),
+            Err(TrySendError::Closed(frame) | TrySendError::Full(frame)) => Err(SendError(frame)),
         }
     }
 

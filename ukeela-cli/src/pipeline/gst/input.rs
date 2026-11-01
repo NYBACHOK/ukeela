@@ -30,10 +30,9 @@ impl GstInputReader {
                 output: _,
             } => {
                 format!(
-                    "v4l2src device={} extra-controls=\"s,auto_exposure=3,exposure_dynamic_framerate=0\" ! \
-     image/jpeg,width={},height={},framerate={}/1 ! \
-     jpegdec ! videoconvert ! video/x-raw,format=BGRA ! appsink name=sink sync=false emit-signals=true",
-                    camera_device, width, height, fps
+                    "v4l2src device={camera_device} extra-controls=\"s,auto_exposure=3,exposure_dynamic_framerate=0\" ! \
+     image/jpeg,width={width},height={height},framerate={fps}/1 ! \
+     jpegdec ! videoconvert ! video/x-raw,format=BGRA ! appsink name=sink sync=false emit-signals=true"
                 )
             }
             GstInputConfig::Libcamera {
@@ -48,13 +47,11 @@ impl GstInputReader {
             ),
             GstInputConfig::File { path, output: _ } => {
                 // uridecodebin automatically handles demuxing & decoding any video format
-                let absolute_path =
-                    std::fs::canonicalize(&path).unwrap_or_else(|_| std::path::PathBuf::from(path));
+                let absolute_path = std::fs::canonicalize(&path).unwrap_or_else(|_| path);
                 let uri = format!("file://{}", absolute_path.to_string_lossy());
 
                 format!(
-                    "uridecodebin uri=\"{}\" ! appsink name=sink sync=true emit-signals=true",
-                    uri
+                    "uridecodebin uri=\"{uri}\" ! appsink name=sink sync=true emit-signals=true"
                 )
             }
             GstInputConfig::Custom {

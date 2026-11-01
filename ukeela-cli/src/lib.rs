@@ -94,7 +94,7 @@ pub async fn run(
                 avg_processing_time_ms = stats.avg_processing_time_ms,
                 middleware_processing_times_ms = ?stats.middleware_processing_times.into_iter().map(| (key, val) |(key, val.as_secs_f64() * 1000.0)).collect::<Vec<_>>(),
                 "Pipeline statistics"
-            )
+            );
         }
     }
 

@@ -29,8 +29,7 @@ impl GstOutputWriter {
         let (pipeline_str, framerate) = match cfg {
             GstOutputConfig::Display { .. } => (
                 format!(
-                    "appsrc name=src ! videoconvert{} ! videoconvert ! autovideosink sync=false",
-                    overlay_stage,
+                    "appsrc name=src ! videoconvert{overlay_stage} ! videoconvert ! autovideosink sync=false",
                 ),
                 None,
             ),

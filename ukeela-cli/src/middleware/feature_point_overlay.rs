@@ -76,7 +76,7 @@ impl FeaturePointOverlayMiddleware {
         }
 
         frame.data = std::sync::Arc::new(data.into());
-        
+
         Ok(frame)
     }
 }
