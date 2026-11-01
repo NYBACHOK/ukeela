@@ -1,5 +1,5 @@
 use crate::{
-    frame::{Frame, VideoFormat},
+    frame::Frame,
     middleware::{Middleware, ProcessResult},
 };
 
@@ -27,10 +27,7 @@ impl FeaturePointOverlayMiddleware {
             return Ok(frame);
         }
 
-        let bytes_per_pixel = match &frame.format {
-            VideoFormat::BGR => 3,
-            VideoFormat::BGRA => 4,
-        };
+        let bytes_per_pixel = frame.format.channels();
 
         let expected_len = usize::try_from(frame.width)
             .ok()
@@ -95,15 +92,16 @@ impl Middleware for FeaturePointOverlayMiddleware {
 mod tests {
     use bytes::Bytes;
 
+    use crate::frame::VideoFormat;
+
     use super::*;
 
-    fn frame(width: u32, height: u32, format: VideoFormat) -> Frame {
-        let channels = match &format {
-            VideoFormat::BGR => 3,
-            VideoFormat::BGRA => 4,
-        };
+    fn frame(width: usize, height: usize, format: VideoFormat) -> Frame {
         Frame::new(
-            Bytes::from(vec![10; width as usize * height as usize * channels]),
+            Bytes::from(vec![
+                10;
+                width as usize * height as usize * format.channels()
+            ]),
             width,
             height,
             format,

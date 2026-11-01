@@ -5,6 +5,7 @@ use crate::{
             FeatureDetectionConfig, fast::FastFeatureDetectionMiddleware,
             orb::OrbFeatureDetectionMiddleware,
         },
+        grayscale::GrayscaleMiddleware,
     },
     pipeline::{
         FramePipeline,
@@ -113,6 +114,10 @@ fn build_processing_chain(
 ) -> Result<ProcessingChain, anyhow::Error> {
     let mut chain = ProcessingChain::new();
     let feature_frame_scale = f32::from(crop_percent) / 100.0;
+
+    chain = chain.add_middleware(middleware::MiddlewareDisplatch::Grayscale(
+        GrayscaleMiddleware::new(),
+    ));
 
     chain = chain.add_middleware(match features_method {
         FeaturePointsMethod::Fast => middleware::MiddlewareDisplatch::Fast(

@@ -138,8 +138,8 @@ pub struct PipelineStats {
     pub frames_processed: u64,
     pub avg_fps: u8,
     pub dropped_frames: u64,
-    pub current_width: u32,
-    pub current_height: u32,
+    pub current_width: usize,
+    pub current_height: usize,
     pub avg_processing_time_ms: f32,
     pub middleware_processing_times: HashMap<&'static str, Duration>,
 }

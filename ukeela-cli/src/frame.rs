@@ -1,8 +1,9 @@
 use bytes::Bytes;
+use purecv::core::Matrix;
 use std::{
     collections::HashMap,
     str::FromStr,
-    sync::Arc,
+    sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
 use time::UtcDateTime;
@@ -12,8 +13,8 @@ use time::UtcDateTime;
 pub struct Frame {
     pub id: u64,
     pub timestamp: Duration,
-    pub width: u32,
-    pub height: u32,
+    pub width: usize,
+    pub height: usize,
     pub format: VideoFormat,
     /// Actual pixel data - copied only when needed
     pub data: Arc<Bytes>,
@@ -21,7 +22,7 @@ pub struct Frame {
     pub metadata: FrameMetadata,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub enum VideoFormat {
     #[default]
     BGR,
@@ -42,8 +43,18 @@ impl FromStr for VideoFormat {
     }
 }
 
+impl VideoFormat {
+    pub fn channels(self) -> usize {
+        match self {
+            VideoFormat::BGR => 3,
+            VideoFormat::BGRA => 4,
+        }
+    }
+}
+
 #[derive(Default, Clone)]
 pub struct FrameMetadata {
+    pub grayscale: Option<Arc<RwLock<Matrix<u8>>>>,
     /// Input order before pacing drops or reorders frames.
     pub original_order: Option<u64>,
     /// Sequential output order assigned after pacing and processing.
@@ -64,7 +75,7 @@ pub struct FrameMetadata {
 pub type MotionMatch = ((f32, f32), (f32, f32));
 
 impl Frame {
-    pub fn new(data: Bytes, width: u32, height: u32, format: VideoFormat) -> Self {
+    pub fn new(data: Bytes, width: usize, height: usize, format: VideoFormat) -> Self {
         static FRAME_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
         Self {

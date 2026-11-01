@@ -178,7 +178,12 @@ fn process_sample(
     let mapped = buffer
         .map_readable()
         .context("Failed to map sample buffer")?;
-    let frame = Frame::new(Bytes::copy_from_slice(&mapped), width, height, format);
+    let frame = Frame::new(
+        Bytes::copy_from_slice(&mapped),
+        width as usize,
+        height as usize,
+        format,
+    );
 
     input_handle
         .send_frame_nonblocking(frame)

@@ -1,14 +1,17 @@
-pub mod feature_detection;
-pub mod feature_point_overlay;
-
 use crate::{
     frame::Frame,
-    middleware::feature_detection::{
-        fast::FastFeatureDetectionMiddleware, orb::OrbFeatureDetectionMiddleware,
+    middleware::{
+        feature_detection::{
+            fast::FastFeatureDetectionMiddleware, orb::OrbFeatureDetectionMiddleware,
+        },
+        grayscale::GrayscaleMiddleware,
     },
 };
 
 pub mod chain;
+pub mod feature_detection;
+pub mod feature_point_overlay;
+pub mod grayscale;
 
 /// Process a frame - returns modified frame or error
 pub type ProcessResult = Result<Frame, Box<dyn std::error::Error + Send + Sync>>;
@@ -49,6 +52,7 @@ pub enum MiddlewareDisplatch {
     Fast(FastFeatureDetectionMiddleware),
     Orb(OrbFeatureDetectionMiddleware),
     FeaturePointOverlay(feature_point_overlay::FeaturePointOverlayMiddleware),
+    Grayscale(GrayscaleMiddleware),
     // Ema(EmaMiddleware),
     // FeaturePoints(FeaturePointsMiddleware),
     // OpenCVFeatures(FeatureDetectionMiddleware),
@@ -62,6 +66,7 @@ impl Middleware for MiddlewareDisplatch {
             Self::Fast(v) => v.name(),
             Self::Orb(v) => v.name(),
             Self::FeaturePointOverlay(v) => v.name(),
+            Self::Grayscale(v) => v.name(),
             // MiddlewareDisplatch::Ema(v) => v.name(),
             // MiddlewareDisplatch::FeaturePoints(v) => v.name(),
             // MiddlewareDisplatch::OpenCVFeatures(v) => v.name(),
@@ -75,6 +80,7 @@ impl Middleware for MiddlewareDisplatch {
             Self::Fast(v) => v.process_async(frame).await,
             Self::Orb(v) => v.process_async(frame).await,
             Self::FeaturePointOverlay(v) => v.process_async(frame).await,
+            Self::Grayscale(v) => v.process_async(frame).await,
             // MiddlewareDisplatch::Ema(v) => v.process_async(frame).await,
             // MiddlewareDisplatch::FeaturePoints(v) => v.process_async(frame).await,
             // MiddlewareDisplatch::OpenCVFeatures(v) => v.process_async(frame).await,
