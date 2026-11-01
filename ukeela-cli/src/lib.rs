@@ -44,7 +44,6 @@ pub struct ProcessingChainFlags {
 }
 
 pub async fn run(
-    channel_size: usize,
     show_fps: bool,
     input_cfg: GstInputConfig,
     output_cfg: GstOutputConfig,
@@ -54,8 +53,7 @@ pub async fn run(
 
     let chain = build_processing_chain(flags)?;
 
-    let (pipeline, input_handle, output_handle, mut stats_rx) =
-        FramePipeline::new(chain, channel_size);
+    let (pipeline, input_handle, output_handle, mut stats_rx) = FramePipeline::new(chain);
     let output_writer = GstOutputWriter::try_new(output_cfg, pipeline.clone(), show_fps)?;
     let input_reader = GstInputReader::try_new(input_cfg, pipeline.clone())?;
 

@@ -7,6 +7,7 @@ use std::{
 use tokio::sync::{broadcast, mpsc::channel, watch};
 
 use crate::{
+    DEFAULT_CHANELLS_SIZE,
     frame::Frame,
     middleware::chain::ProcessingChain,
     pipeline::{input::InputHandle, output::OutputHandle},
@@ -25,7 +26,6 @@ impl FramePipeline {
     #[must_use]
     pub fn new(
         processing_chain: ProcessingChain,
-        channel_size: usize,
     ) -> (
         Self,
         InputHandle,
@@ -33,7 +33,7 @@ impl FramePipeline {
         broadcast::Receiver<PipelineStats>,
     ) {
         let (ingress_tx, mut ingress_rx) = watch::channel((0, Frame::default()));
-        let (output_tx, output_rx) = channel(channel_size);
+        let (output_tx, output_rx) = channel(DEFAULT_CHANELLS_SIZE);
         let (stats_tx, stats_rx) = broadcast::channel(16);
         let (shutdown_tx, mut shutdown_rx) = broadcast::channel(1);
 
