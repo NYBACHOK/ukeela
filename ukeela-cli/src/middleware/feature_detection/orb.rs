@@ -68,12 +68,7 @@ impl OrbFeatureDetectionMiddleware {
                     && keypoint.pt.x < width as f32 - border_x
                     && keypoint.pt.y < height as f32 - border_y
             })
-            .map(|keypoint| {
-                (
-                    (keypoint.pt.x / self.config.frame_scale).round() as u32,
-                    (keypoint.pt.y / self.config.frame_scale).round() as u32,
-                )
-            })
+            .map(|keypoint| (keypoint.pt.x.round() as u32, keypoint.pt.y.round() as u32))
             .collect();
 
         frame.metadata.feature_points = Some(points);

@@ -138,9 +138,9 @@ fn build_processing_chain(
             })?,
         ),
     });
-    chain = chain.add_middleware(middleware::MiddlewareDisplatch::Warp(WarpMiddleware::new(
-        feature_frame_scale,
-    )?));
+    chain = chain.add_middleware(middleware::MiddlewareDisplatch::Warp(
+        WarpMiddleware::new(feature_frame_scale)?.with_crop_percent(crop_percent)?,
+    ));
     chain = chain.add_middleware(middleware::MiddlewareDisplatch::FeaturePointOverlay(
         middleware::feature_point_overlay::FeaturePointOverlayMiddleware::new(feature_frame_scale)?,
     ));

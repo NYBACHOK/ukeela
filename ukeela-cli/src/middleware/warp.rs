@@ -1,16 +1,20 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
 use purecv::{
     core::{
         Matrix,
-        types::{BorderTypes, Scalar, Size2i},
+        types::{BorderTypes, Point2f, Scalar, Size2i, TermCriteria, TermType},
     },
-    imgproc::{InterpolationFlags, geometric::warp_perspective},
+    imgproc::{
+        InterpolationFlags, cvt_color_bgr_to_gray, cvt_color_bgra_to_gray,
+        geometric::warp_perspective,
+    },
+    video::optical_flow::calc_optical_flow_pyramid_lk,
 };
 
 use crate::{
-    frame::{Frame, MotionMatch},
+    frame::{Frame, MotionMatch, VideoFormat},
     middleware::{Middleware, ProcessResult},
 };
 
@@ -18,9 +22,18 @@ const MIN_MATCHES: usize = 10;
 const RANSAC_ITERATIONS: usize = 2_000;
 const RANSAC_THRESHOLD: f64 = 3.0;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct WarpMiddleware {
     frame_scale: f32,
+    crop_percent: u8,
+    state: Arc<Mutex<WarpState>>,
+}
+
+#[derive(Debug, Default)]
+struct WarpState {
+    previous_gray: Option<Matrix<u8>>,
+    previous_points: Vec<Point2f>,
+    smoothed_motion: Option<SimilarityTransform>,
 }
 
 impl WarpMiddleware {
@@ -31,44 +44,22 @@ impl WarpMiddleware {
             ));
         }
 
-        Ok(Self { frame_scale })
+        Ok(Self {
+            frame_scale,
+            crop_percent: 0,
+            state: Arc::new(Mutex::new(WarpState::default())),
+        })
+    }
+
+    pub fn with_crop_percent(mut self, crop_percent: u8) -> anyhow::Result<Self> {
+        if crop_percent >= 100 {
+            return Err(anyhow::anyhow!("Crop percentage must be in [0, 100)"));
+        }
+        self.crop_percent = crop_percent;
+        Ok(self)
     }
 
     fn process_frame(&self, mut frame: Frame) -> anyhow::Result<Frame> {
-        let transform = frame
-            .metadata
-            .motion_matches
-            .as_deref()
-            .filter(|matches| matches.len() >= MIN_MATCHES)
-            .and_then(|matches| estimate_motion(matches, self.frame_scale))
-            .or_else(|| {
-                frame
-                    .metadata
-                    .motion_vectors
-                    .as_deref()
-                    .filter(|vectors| vectors.len() >= MIN_MATCHES)
-                    .and_then(|vectors| estimate_translation(vectors, self.frame_scale))
-            });
-        let Some(transform) = transform else {
-            return Ok(frame);
-        };
-
-        let Some(inverse) = inverse_transform(transform) else {
-            return Ok(frame);
-        };
-        let estimated_transform = [
-            inverse.data[0] as f32,
-            inverse.data[1] as f32,
-            inverse.data[2] as f32,
-            inverse.data[3] as f32,
-            inverse.data[4] as f32,
-            inverse.data[5] as f32,
-        ];
-        if estimated_transform.iter().any(|value| !value.is_finite()) {
-            return Err(anyhow::anyhow!(
-                "Estimated image transform exceeds supported limits"
-            ));
-        }
         let width = i32::try_from(frame.width)
             .map_err(|_| anyhow::anyhow!("Frame width exceeds purecv limits"))?;
         let height = i32::try_from(frame.height)
@@ -76,6 +67,43 @@ impl WarpMiddleware {
         if width <= 0 || height <= 0 {
             return Err(anyhow::anyhow!("Frame dimensions must be non-zero"));
         }
+
+        let current_gray = frame_grayscale(&frame, self.frame_scale)?;
+        let current_points = frame
+            .metadata
+            .feature_points
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .map(|&(x, y)| Point2f::new(x as f32, y as f32))
+            .collect::<Vec<_>>();
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Warp state lock is poisoned"))?;
+        let mut matches = track_points(&state, &current_gray)?;
+        matches.extend(
+            frame
+                .metadata
+                .motion_matches
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .copied(),
+        );
+        let motion = estimate_motion(&matches, self.frame_scale).or_else(|| {
+            frame
+                .metadata
+                .motion_vectors
+                .as_deref()
+                .filter(|vectors| vectors.len() >= MIN_MATCHES)
+                .and_then(|vectors| estimate_translation(vectors, self.frame_scale))
+        });
+        let motion = motion.map(|motion| smooth_motion(&mut state, motion));
+        state.previous_gray = Some(current_gray);
+        state.previous_points = current_points;
+        let inverse = motion.and_then(inverse_transform);
+        let identity = Matrix::from_vec(3, 3, 1, vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
 
         let channels = frame.format.channels();
         let row_bytes = frame
@@ -106,9 +134,10 @@ impl WarpMiddleware {
         }
 
         let image = Matrix::from_vec(frame.height, frame.width, channels, packed);
+        let transform = inverse.as_ref().unwrap_or(&identity);
         let warped = warp_perspective(
             &image,
-            &inverse,
+            transform,
             Size2i::new(width, height),
             InterpolationFlags::Linear,
             BorderTypes::Reflect,
@@ -116,24 +145,43 @@ impl WarpMiddleware {
         )
         .map_err(|error| anyhow::anyhow!("purecv image warp failed: {error}"))?;
 
-        frame.data = Arc::new(Bytes::from(warped.data));
-        frame.metadata.estimated_transform = Some(estimated_transform);
+        let (cropped, crop_x, crop_y) = crop_image(&warped, self.crop_percent)?;
+        frame.width = cropped.cols;
+        frame.height = cropped.rows;
+        frame.data = Arc::new(Bytes::from(cropped.data));
+        if inverse.is_some() {
+            let estimated_transform = [
+                (transform.data[0]) as f32,
+                (transform.data[1]) as f32,
+                (transform.data[2] - crop_x as f64) as f32,
+                (transform.data[3]) as f32,
+                (transform.data[4]) as f32,
+                (transform.data[5] - crop_y as f64) as f32,
+            ];
+            if estimated_transform.iter().any(|value| !value.is_finite()) {
+                return Err(anyhow::anyhow!(
+                    "Estimated image transform exceeds supported limits"
+                ));
+            }
+            frame.metadata.estimated_transform = Some(estimated_transform);
+        }
         if let Some(points) = frame.metadata.feature_points.as_mut() {
+            let feature_scale = f64::from(self.frame_scale);
             points.retain_mut(|(x, y)| {
-                let transformed_x = f64::from(inverse.data[0]) * f64::from(*x)
-                    + f64::from(inverse.data[1]) * f64::from(*y)
-                    + inverse.data[2];
-                let transformed_y = f64::from(inverse.data[3]) * f64::from(*x)
-                    + f64::from(inverse.data[4]) * f64::from(*y)
-                    + inverse.data[5];
+                let transformed_x = transform.data[0] * f64::from(*x)
+                    + transform.data[1] * f64::from(*y)
+                    + (transform.data[2] - crop_x as f64) * feature_scale;
+                let transformed_y = transform.data[3] * f64::from(*x)
+                    + transform.data[4] * f64::from(*y)
+                    + (transform.data[5] - crop_y as f64) * feature_scale;
                 let rounded_x = transformed_x.round();
                 let rounded_y = transformed_y.round();
                 if !rounded_x.is_finite()
                     || !rounded_y.is_finite()
                     || rounded_x < 0.0
                     || rounded_y < 0.0
-                    || rounded_x >= f64::from(width)
-                    || rounded_y >= f64::from(height)
+                    || rounded_x >= cropped.cols as f64 * feature_scale
+                    || rounded_y >= cropped.rows as f64 * feature_scale
                 {
                     return false;
                 }
@@ -150,7 +198,7 @@ impl WarpMiddleware {
 
 impl Default for WarpMiddleware {
     fn default() -> Self {
-        Self::new(0.25).expect("valid")
+        Self::new(0.25).expect("valid frame scale")
     }
 }
 
@@ -161,10 +209,164 @@ impl Middleware for WarpMiddleware {
 
     async fn process_async(&self, frame: Frame) -> ProcessResult {
         let frame_scale = self.frame_scale;
-        tokio::task::spawn_blocking(move || WarpMiddleware { frame_scale }.process_frame(frame))
-            .await?
-            .map_err(Into::into)
+        let crop_percent = self.crop_percent;
+        let state = Arc::clone(&self.state);
+        tokio::task::spawn_blocking(move || {
+            WarpMiddleware {
+                frame_scale,
+                crop_percent,
+                state,
+            }
+            .process_frame(frame)
+        })
+        .await?
+        .map_err(Into::into)
     }
+}
+
+fn frame_grayscale(frame: &Frame, frame_scale: f32) -> anyhow::Result<Matrix<u8>> {
+    let width = ((frame.width as f32 * frame_scale).round() as usize).max(1);
+    let height = ((frame.height as f32 * frame_scale).round() as usize).max(1);
+    let gray = if let Some(gray) = frame.metadata.grayscale.as_deref() {
+        gray.clone()
+    } else {
+        let channels = frame.format.channels();
+        let row_bytes = frame
+            .width
+            .checked_mul(channels)
+            .ok_or_else(|| anyhow::anyhow!("Frame row size overflow"))?;
+        let packed_len = row_bytes
+            .checked_mul(frame.height)
+            .ok_or_else(|| anyhow::anyhow!("Frame buffer size overflow"))?;
+        if frame.data.len() < packed_len {
+            return Err(anyhow::anyhow!(
+                "Frame buffer is too small for its dimensions and pixel format"
+            ));
+        }
+        let stride = if frame.data.len().is_multiple_of(frame.height)
+            && frame.data.len() / frame.height >= row_bytes
+        {
+            frame.data.len() / frame.height
+        } else {
+            row_bytes
+        };
+        let mut packed = Vec::with_capacity(packed_len);
+        for row in 0..frame.height {
+            let start = row * stride;
+            packed.extend_from_slice(&frame.data[start..start + row_bytes]);
+        }
+        let color = Matrix::from_vec(frame.height, frame.width, channels, packed);
+        match frame.format {
+            VideoFormat::BGR => cvt_color_bgr_to_gray(&color).map_err(anyhow::Error::msg)?,
+            VideoFormat::BGRA => cvt_color_bgra_to_gray(&color).map_err(anyhow::Error::msg)?,
+        }
+    };
+    if gray.channels != 1 {
+        return Err(anyhow::anyhow!(
+            "Warp input grayscale image must have one channel"
+        ));
+    }
+
+    if gray.cols == width && gray.rows == height {
+        Ok(gray)
+    } else {
+        Ok(purecv::imgproc::resize(
+            &gray,
+            purecv::core::Size::new(width, height),
+        )?)
+    }
+}
+
+fn track_points(state: &WarpState, current_gray: &Matrix<u8>) -> anyhow::Result<Vec<MotionMatch>> {
+    let Some(previous_gray) = state.previous_gray.as_ref() else {
+        return Ok(Vec::new());
+    };
+    if previous_gray.cols != current_gray.cols
+        || previous_gray.rows != current_gray.rows
+        || state.previous_points.len() < MIN_MATCHES
+    {
+        return Ok(Vec::new());
+    }
+
+    let window = Size2i::new(21, 21);
+    if current_gray.cols < window.width as usize || current_gray.rows < window.height as usize {
+        return Ok(Vec::new());
+    }
+    let (tracked, status, _) = calc_optical_flow_pyramid_lk(
+        previous_gray,
+        current_gray,
+        &state.previous_points,
+        None,
+        window,
+        3,
+        TermCriteria::new(TermType::Both, 30, 0.01),
+        0,
+        1e-4,
+    )?;
+
+    Ok(state
+        .previous_points
+        .iter()
+        .zip(tracked.iter())
+        .zip(status.iter())
+        .filter_map(|((&previous, &current), &status)| {
+            (status != 0
+                && current.x.is_finite()
+                && current.y.is_finite()
+                && current.x >= 0.0
+                && current.y >= 0.0
+                && current.x < current_gray.cols as f32
+                && current.y < current_gray.rows as f32)
+                .then_some(((previous.x, previous.y), (current.x, current.y)))
+        })
+        .collect())
+}
+
+fn smooth_motion(state: &mut WarpState, motion: SimilarityTransform) -> SimilarityTransform {
+    let Some(previous) = state.smoothed_motion else {
+        state.smoothed_motion = Some(motion);
+        return motion;
+    };
+    const CURRENT_WEIGHT: f64 = 0.75;
+    let previous_weight = 1.0 - CURRENT_WEIGHT;
+    let smoothed = SimilarityTransform {
+        a: motion.a * CURRENT_WEIGHT + previous.a * previous_weight,
+        b: motion.b * CURRENT_WEIGHT + previous.b * previous_weight,
+        tx: motion.tx * CURRENT_WEIGHT + previous.tx * previous_weight,
+        ty: motion.ty * CURRENT_WEIGHT + previous.ty * previous_weight,
+    };
+    state.smoothed_motion = Some(smoothed);
+    smoothed
+}
+
+fn crop_image(image: &Matrix<u8>, crop_percent: u8) -> anyhow::Result<(Matrix<u8>, usize, usize)> {
+    let crop_x = image.cols * usize::from(crop_percent) / 200;
+    let crop_y = image.rows * usize::from(crop_percent) / 200;
+    let width = image.cols.saturating_sub(crop_x.saturating_mul(2));
+    let height = image.rows.saturating_sub(crop_y.saturating_mul(2));
+    if width == 0 || height == 0 {
+        return Err(anyhow::anyhow!(
+            "Crop percentage leaves no output pixels for this frame"
+        ));
+    }
+
+    let row_len = width
+        .checked_mul(image.channels)
+        .ok_or_else(|| anyhow::anyhow!("Cropped image row size overflow"))?;
+    let mut pixels = Vec::with_capacity(
+        row_len
+            .checked_mul(height)
+            .ok_or_else(|| anyhow::anyhow!("Cropped image size overflow"))?,
+    );
+    for row in crop_y..crop_y + height {
+        let start = (row * image.cols + crop_x) * image.channels;
+        pixels.extend_from_slice(&image.data[start..start + row_len]);
+    }
+    Ok((
+        Matrix::from_vec(height, width, image.channels, pixels),
+        crop_x,
+        crop_y,
+    ))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -337,8 +539,6 @@ fn inverse_transform(motion: SimilarityTransform) -> Option<Matrix<f64>> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use bytes::Bytes;
 
     use super::{MIN_MATCHES, WarpMiddleware};
@@ -358,11 +558,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn leaves_frames_without_enough_correspondences_unchanged() {
+    async fn applies_identity_when_there_are_no_motion_matches() {
         let mut frame = Frame::new(Bytes::from(vec![80; 16 * 16 * 3]), 16, 16, VideoFormat::BGR);
         frame.metadata.motion_matches =
             Some(translated_matches(2.0, 1.0)[..MIN_MATCHES - 1].to_vec());
-        let original = frame.data.clone();
 
         let processed = WarpMiddleware::new(1.0)
             .expect("valid frame scale")
@@ -370,8 +569,90 @@ mod tests {
             .await
             .expect("frame should pass through");
 
-        assert!(Arc::ptr_eq(&processed.data, &original));
+        assert_eq!((processed.width, processed.height), (16, 16));
+        assert_eq!(processed.data.len(), 16 * 16 * 3);
         assert!(processed.metadata.estimated_transform.is_none());
+    }
+
+    #[tokio::test]
+    async fn crops_output_resolution_by_configured_percentage() {
+        let frame = Frame::new(Bytes::from(vec![80; 80 * 40 * 3]), 80, 40, VideoFormat::BGR);
+        let processed = WarpMiddleware::new(0.25)
+            .expect("valid frame scale")
+            .with_crop_percent(25)
+            .expect("valid crop percentage")
+            .process_async(frame)
+            .await
+            .expect("crop should succeed");
+
+        assert_eq!((processed.width, processed.height), (60, 30));
+        assert_eq!(processed.data.len(), 60 * 30 * 3);
+    }
+
+    #[tokio::test]
+    async fn tracks_features_between_frames_and_stabilizes_translation() {
+        let width = 96;
+        let height = 96;
+        let mut state = 0x1234_5678_u32;
+        let mut source = vec![0_u8; width * height];
+        for pixel in &mut source {
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            *pixel = (state >> 24) as u8;
+        }
+        let points = (20..80)
+            .step_by(10)
+            .flat_map(|y| (20..80).step_by(10).map(move |x| (x as u32, y as u32)))
+            .collect::<Vec<_>>();
+        let middleware = WarpMiddleware::new(1.0).expect("valid frame scale");
+
+        let mut previous = Frame::new(
+            Bytes::from(
+                source
+                    .iter()
+                    .flat_map(|&gray| [gray, gray, gray])
+                    .collect::<Vec<_>>(),
+            ),
+            width,
+            height,
+            VideoFormat::BGR,
+        );
+        previous.metadata.feature_points = Some(points.clone());
+        middleware
+            .process_async(previous)
+            .await
+            .expect("first frame should be accepted");
+
+        let mut translated = vec![0_u8; width * height];
+        for y in 0..height {
+            for x in 0..width {
+                let source_x = x.saturating_sub(2);
+                let source_y = (y + 1).min(height - 1);
+                translated[y * width + x] = source[source_y * width + source_x];
+            }
+        }
+        let mut current = Frame::new(
+            Bytes::from(
+                translated
+                    .iter()
+                    .flat_map(|&gray| [gray, gray, gray])
+                    .collect::<Vec<_>>(),
+            ),
+            width,
+            height,
+            VideoFormat::BGR,
+        );
+        current.metadata.feature_points = Some(points);
+
+        let stabilized = middleware
+            .process_async(current)
+            .await
+            .expect("tracked frame should be stabilized");
+        let transform = stabilized
+            .metadata
+            .estimated_transform
+            .expect("optical flow should estimate a transform");
+        assert!((transform[2] + 2.0).abs() < 0.75);
+        assert!((transform[5] - 1.0).abs() < 0.75);
     }
 
     #[tokio::test]

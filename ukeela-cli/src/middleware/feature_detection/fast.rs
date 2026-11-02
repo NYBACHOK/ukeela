@@ -70,12 +70,7 @@ impl FastFeatureDetectionMiddleware {
             keypoints
                 .into_iter()
                 .take(self.config.num_features)
-                .map(|keypoint| {
-                    (
-                        (keypoint.pt.x / self.config.frame_scale).round() as u32,
-                        (keypoint.pt.y / self.config.frame_scale).round() as u32,
-                    )
-                })
+                .map(|keypoint| (keypoint.pt.x.round() as u32, keypoint.pt.y.round() as u32))
                 .collect(),
         );
         frame.metadata.motion_vectors = None;
@@ -100,5 +95,71 @@ impl Middleware for FastFeatureDetectionMiddleware {
         let frame = self.process_frame(frame)?;
 
         Ok(frame)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use bytes::Bytes;
+    use purecv::core::Matrix;
+
+    use super::FastFeatureDetectionMiddleware;
+    use crate::{
+        frame::{Frame, VideoFormat},
+        middleware::{
+            Middleware, feature_detection::FeatureDetectionConfig,
+            feature_point_overlay::FeaturePointOverlayMiddleware,
+        },
+    };
+
+    fn textured_image(size: usize) -> Arc<Matrix<u8>> {
+        let mut image = Matrix::new(size, size, 1);
+        let mut state = 0x1234_5678_u32;
+        for y in 0..size {
+            for x in 0..size {
+                state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                image.data[y * size + x] = (state >> 24) as u8;
+            }
+        }
+        Arc::new(image)
+    }
+
+    #[tokio::test]
+    async fn detected_points_are_drawn_by_the_overlay() {
+        let frame_scale = 0.5;
+        let detector = FastFeatureDetectionMiddleware::new(FeatureDetectionConfig {
+            frame_scale,
+            distance_to_border: 0,
+            ..FeatureDetectionConfig::default()
+        })
+        .expect("valid feature config");
+        let overlay = FeaturePointOverlayMiddleware::new(frame_scale).expect("valid overlay scale");
+        let mut frame = Frame::new(Bytes::from(vec![0; 64 * 64 * 3]), 64, 64, VideoFormat::BGR);
+        frame.metadata.grayscale = Some(textured_image(64));
+
+        let frame = detector
+            .process_async(frame)
+            .await
+            .expect("FAST detection should succeed");
+        let points = frame
+            .metadata
+            .feature_points
+            .as_ref()
+            .expect("feature points should be set");
+        assert!(!points.is_empty());
+        assert!(points.iter().all(|&(x, y)| x < 32 && y < 32));
+
+        let frame = overlay
+            .process_async(frame)
+            .await
+            .expect("overlay should succeed");
+        let green_pixels = frame
+            .data
+            .chunks_exact(3)
+            .filter(|pixel| *pixel == [0, 255, 0])
+            .count();
+        assert!(green_pixels > 0);
     }
 }
