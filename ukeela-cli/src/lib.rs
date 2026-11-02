@@ -6,6 +6,7 @@ use crate::{
             orb::OrbFeatureDetectionMiddleware,
         },
         grayscale::GrayscaleMiddleware,
+        warp::WarpMiddleware,
     },
     pipeline::{
         FramePipeline,
@@ -137,6 +138,9 @@ fn build_processing_chain(
             })?,
         ),
     });
+    chain = chain.add_middleware(middleware::MiddlewareDisplatch::Warp(WarpMiddleware::new(
+        feature_frame_scale,
+    )?));
     chain = chain.add_middleware(middleware::MiddlewareDisplatch::FeaturePointOverlay(
         middleware::feature_point_overlay::FeaturePointOverlayMiddleware::new(feature_frame_scale)?,
     ));
