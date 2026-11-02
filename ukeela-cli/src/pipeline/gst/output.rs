@@ -27,6 +27,7 @@ impl GstOutputWriter {
         };
 
         let (pipeline_str, framerate) = match cfg {
+            GstOutputConfig::FakeSink => ("appsrc name=src ! fakesink sync=false".to_owned(), None),
             GstOutputConfig::Display { .. } => (
                 format!(
                     "appsrc name=src ! videoconvert{overlay_stage} ! videoconvert ! autovideosink sync=false",

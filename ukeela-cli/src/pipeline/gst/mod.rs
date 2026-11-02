@@ -62,6 +62,7 @@ impl GstInputConfig {
 
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum GstOutputConfig {
+    FakeSink,
     Display {
         #[arg(long, default_value_t = 1920, required = false)]
         width: u32,
