@@ -19,41 +19,18 @@ impl GrayscaleMiddleware {
     }
 
     async fn process_frame(&self, mut frame: Frame) -> anyhow::Result<Frame> {
-        if frame.width == 0 || frame.height == 0 {
-            return Err(anyhow::anyhow!("frame dimensions must be non-zero"));
-        }
-
         let channels = frame.format.channels();
 
-        let row_bytes = frame
-            .width
-            .checked_mul(channels)
-            .ok_or_else(|| anyhow::anyhow!("frame width dimension overflow"))?;
-        let packed_len = row_bytes
-            .checked_mul(frame.height)
-            .ok_or_else(|| anyhow::anyhow!("frame height dimension overflow"))?;
-
-        if frame.data.len() < packed_len {
-            return Err(anyhow::anyhow!(
-                "frame buffer is too small for its dimensions",
-            ));
-        }
-
-        let row_stride = if frame.data.len().is_multiple_of(frame.height)
-            && frame.data.len() / frame.height >= row_bytes
-        {
-            frame.data.len() / frame.height
-        } else {
-            row_bytes
-        };
-
-        let pixels = frame.data.as_raw();
-        let mut packed = Vec::with_capacity(packed_len);
-        for row in 0..frame.height {
-            let start = row * row_stride;
-            packed.extend_from_slice(&pixels[start..start + row_bytes]);
-        }
-        let color = Matrix::from_vec(frame.height, frame.width, channels, packed);
+        // Why cast and clone to purecv instead of image::imageproc?
+        // Performance diff. I tested only on laptop, but difference is 2x times faster for this op
+        // Ironically, but resizing is on oposite slower for purecv, but its cause `fast_image_resize`
+        // do single job, but extremly well
+        let color = Matrix::from_vec(
+            frame.data.rows().count(),
+            frame.width,
+            channels,
+            frame.data.to_vec(),
+        );
 
         let grayscale = tokio::runtime::Handle::current()
             .spawn_blocking({

@@ -32,7 +32,7 @@ purecv = { version = "0.12", features = ["simd", "parallel"]} # "simd", "paralle
 fast_image_resize = { version = "6.1", features = ["image", "rayon"] }
 
 tokio = { version = "1.35", features = ["full"] }
-# crossbeam = "0.8"`
+# crossbeam = "0.8"
 
 serde = { version = "1.0", features = ["derive"] }
 image = { version = "0.25", default-features = false, features = ["rayon"]}

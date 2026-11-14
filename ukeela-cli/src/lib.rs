@@ -121,8 +121,6 @@ pub async fn run(
                 frames_processed = stats.frames_processed,
                 avg_fps = stats.avg_fps,
                 dropped_frames = stats.dropped_frames,
-                current_width = stats.current_width,
-                current_height = stats.current_height,
                 avg_processing_time_ms = format!("{:.6}", stats.avg_processing_time_ms),
                 middleware_processing_times_ms = ?stats.middleware_processing_times.into_iter().map(| (key, val) |(key, format!("{:.2}", val.as_secs_f64() * 1000.0))).collect::<Vec<_>>(),
                 "Pipeline statistics"
@@ -156,9 +154,9 @@ fn build_processing_chain(
         ),
     ));
 
-    // chain = chain.add_middleware(middleware::MiddlewareDisplatch::Grayscale(
-    //     GrayscaleMiddleware::new(),
-    // ));
+    chain = chain.add_middleware(middleware::MiddlewareDisplatch::Grayscale(
+        GrayscaleMiddleware::new(),
+    ));
 
     // chain = chain.add_middleware(match features_method {
     //     FeaturePointsMethod::Fast => middleware::MiddlewareDisplatch::Fast(
