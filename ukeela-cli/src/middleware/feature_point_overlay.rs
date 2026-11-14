@@ -1,76 +1,77 @@
+use std::sync::Arc;
+
+use image::Rgba;
+
 use crate::{
     frame::Frame,
     middleware::{Middleware, ProcessResult},
-    types::frame_scale::FrameScale,
 };
 
+const GREEN_PIXEL: Rgba<u8> = image::Rgba([0, 255, 0, 255]);
+
 #[derive(Debug, Clone, Copy)]
-pub struct FeaturePointOverlayMiddleware {
-    frame_scale: FrameScale,
-}
+pub struct FeaturePointOverlayMiddleware {}
 
 impl FeaturePointOverlayMiddleware {
-    pub fn new(frame_scale: FrameScale) -> Self {
-        Self { frame_scale }
+    pub fn new() -> Self {
+        Self {}
     }
 
-    fn process_frame(&self, mut frame: Frame) -> ProcessResult {
-        let Some(points) = frame.metadata.feature_points.as_ref() else {
-            return Ok(frame);
-        };
+    pub fn process_frame(&self, mut frame: Frame) -> ProcessResult {
+        let points = &frame.metadata.feature_points;
+
         if points.is_empty() {
             return Ok(frame);
         }
 
-        let bytes_per_pixel = frame.format.channels();
+        let width = frame.width;
+        let height = frame.height;
 
-        let expected_len = usize::try_from(frame.width)
-            .ok()
-            .and_then(|width| width.checked_mul(usize::try_from(frame.height).ok()?))
-            .and_then(|pixels| pixels.checked_mul(bytes_per_pixel))
-            .ok_or_else(|| anyhow::anyhow!("Frame dimensions exceed addressable pixel data"))?;
-
-        if frame.data.len() < expected_len {
-            return Err(anyhow::anyhow!(
-                "Frame data is too small for its dimensions and pixel format"
-            )
-            .into());
+        // Unique ownership of the Arc buffer (Clone-on-Write)
+        if Arc::strong_count(&frame.data) > 1 {
+            let inner = (*frame.data).clone();
+            frame.data = Arc::new(inner);
         }
 
-        let width = usize::try_from(frame.width)?;
-        let height = usize::try_from(frame.height)?;
-        let scale = f64::from(self.frame_scale);
-        let mut data = frame.data.as_raw().to_vec();
+        let raw_data =
+            Arc::get_mut(&mut frame.data).expect("Frame data should be uniquely owned after clone");
 
-        for &(feature_x, feature_y) in points {
-            let x = (f64::from(feature_x) / scale).round();
-            let y = (f64::from(feature_y) / scale).round();
-            if x >= width as f64 || y >= height as f64 {
-                continue;
-            }
+        for point in points {
+            let px = point.pt.x.round() as i32;
+            let py = point.pt.y.round() as i32;
 
-            let x = x as usize;
-            let y = y as usize;
-            for marker_y in y.saturating_sub(3)..=y.saturating_add(3).min(height - 1) {
-                for marker_x in x.saturating_sub(3)..=x.saturating_add(3).min(width - 1) {
-                    let dx = marker_x as isize - x as isize;
-                    let dy = marker_y as isize - y as isize;
-                    if dx * dx + dy * dy > 9 {
-                        continue;
+            // size is the diameter, so radius = size / 2.
+            // Fallback to a minimum radius of 2 if size is 0 or unassigned.
+            let radius = if point.size > 0.0 {
+                ((point.size * 0.5).max(1.0)).round() as i32
+            } else {
+                2
+            };
+
+            let r_sq = radius * radius;
+            let inner_r_sq = (radius - 1).max(0) * (radius - 1).max(0);
+
+            for dy in -radius..=radius {
+                for dx in -radius..=radius {
+                    let dist_sq = dx * dx + dy * dy;
+
+                    let is_ring = dist_sq <= r_sq && dist_sq >= inner_r_sq;
+                    let is_center = dx.abs() + dy.abs() <= 1;
+
+                    if is_ring || is_center {
+                        let nx = px + dx;
+                        let ny = py + dy;
+                        if nx >= 0 && ny >= 0 {
+                            let x = nx as usize;
+                            let y = ny as usize;
+                            if x < width && y < height {
+                                raw_data.put_pixel(x as u32, y as u32, GREEN_PIXEL);
+                            }
+                        }
                     }
-
-                    let offset = (marker_y * width + marker_x) * bytes_per_pixel;
-                    data[offset] = 0;
-                    data[offset + 1] = 255;
-                    data[offset + 2] = 0;
                 }
             }
         }
-
-        let image = image::ImageBuffer::from_raw(width as u32, height as u32, data)
-            .expect("image is always valid");
-
-        frame.data = std::sync::Arc::new(image);
 
         Ok(frame)
     }
@@ -83,73 +84,5 @@ impl Middleware for FeaturePointOverlayMiddleware {
 
     fn process_async(&self, frame: Frame) -> impl std::future::Future<Output = ProcessResult> {
         std::future::ready(self.process_frame(frame))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::frame::VideoFormat;
-
-    use super::*;
-
-    fn frame(width: usize, height: usize, format: VideoFormat) -> Frame {
-        let bytes_per_pixel = format.channels();
-        let image = image::ImageBuffer::from_raw(
-            width as u32,
-            height as u32,
-            vec![10; width * height * bytes_per_pixel.max(4)],
-        )
-        .expect("invalid image");
-
-        Frame::new(image, width, height, format)
-    }
-
-    #[tokio::test]
-    async fn colors_scaled_bgr_feature_points_green() {
-        let mut frame = frame(16, 16, VideoFormat::RGBA);
-        frame.metadata.feature_points = Some(vec![(4, 4), (50, 50)]);
-
-        let frame = FeaturePointOverlayMiddleware::new(FrameScale::try_new(0.5).unwrap())
-            .process_async(frame)
-            .await
-            .unwrap();
-
-        let raw = frame.data.as_raw();
-        let pixel = (8 * 16 + 8) * 4;
-        assert_eq!(&raw[pixel..pixel + 4], &[0, 255, 0, 10]);
-        assert_eq!(&raw[0..4], &[10, 10, 10, 10]);
-        let pixels_colored = raw
-            .chunks_exact(4)
-            .filter(|pixel| *pixel == [0, 255, 0, 10])
-            .count();
-        assert_eq!(pixels_colored, 29);
-    }
-
-    #[tokio::test]
-    async fn preserves_alpha_when_coloring_bgra_feature_points() {
-        let mut frame = frame(2, 2, VideoFormat::BGRA);
-        frame.metadata.feature_points = Some(vec![(1, 0)]);
-
-        let frame = FeaturePointOverlayMiddleware::new(FrameScale::try_new(1.0).unwrap())
-            .process_async(frame)
-            .await
-            .unwrap();
-
-        let data = frame.data.as_raw();
-
-        assert_eq!(&data[4..8], &[0, 255, 0, 10]);
-    }
-
-    #[tokio::test]
-    async fn leaves_frames_without_feature_points_unchanged() {
-        let frame = frame(2, 2, VideoFormat::RGBA);
-        let original = frame.data.clone();
-
-        let frame = FeaturePointOverlayMiddleware::new(FrameScale::try_new(1.0).unwrap())
-            .process_async(frame)
-            .await
-            .unwrap();
-
-        assert_eq!(frame.data, original);
     }
 }

@@ -67,13 +67,19 @@ pub struct ProcessingChainFlags {
     /// Scale original image to specific percent of it's original size
     #[arg(long, global = true, default_value_t = 25, value_parser = clap::value_parser!(u8).range(1..101), required = false)]
     pub scale: u8,
-    /// Total percentage cropped from each frame dimension, split across opposite edges.
-    #[arg(long, global = true, default_value_t = 25, value_parser = clap::value_parser!(u8).range(1..101), required = false)]
-    pub crop_percent: u8,
     #[arg(long,global = true, default_value_t = FeaturePointsMethod::Fast, required = false)]
     pub features_method: FeaturePointsMethod,
     #[arg(long,global = true, default_value_t = FilterType::Bilinear, required = false)]
     pub filter_type: FilterType,
+    /// Show found features on image
+    #[arg(long, global = true, default_value_t = false, required = false)]
+    pub debug_features: bool,
+    #[arg(long, global = true, default_value_t = NonZero::new(100).unwrap(), required = false)]
+    pub num_features: NonZero<usize>,
+    #[arg(long, global = true, default_value_t = 50, required = false)]
+    pub distance_to_border: u32,
+    #[arg(long, global = true, default_value_t = 30, required = false)]
+    pub fast_threshold: u8,
 }
 
 pub async fn run(
@@ -138,51 +144,48 @@ pub async fn run(
 fn build_processing_chain(
     ProcessingChainFlags {
         scale,
-        crop_percent,
         features_method,
         filter_type,
+        debug_features,
+        num_features,
+        distance_to_border,
+        fast_threshold,
     }: ProcessingChainFlags,
 ) -> Result<ProcessingChain, anyhow::Error> {
-    let mut chain = ProcessingChain::new();
     let feature_frame_scale = FrameScale::try_new(f32::from(scale) / 100.0)
         .ok_or(anyhow::anyhow!("invalid frame scale"))?;
 
-    chain = chain.add_middleware(middleware::MiddlewareDisplatch::Resize(
-        ResizeMiddleware::new(
-            feature_frame_scale,
-            fast_image_resize::ResizeAlg::Convolution(filter_type.into()),
-        ),
-    ));
+    let mut chain = ProcessingChain::new()
+        .add_middleware(middleware::MiddlewareDisplatch::Resize(
+            ResizeMiddleware::new(
+                feature_frame_scale,
+                fast_image_resize::ResizeAlg::Convolution(filter_type.into()),
+            ),
+        ))
+        .add_middleware(middleware::MiddlewareDisplatch::Grayscale(
+            GrayscaleMiddleware::new(),
+        ));
 
-    chain = chain.add_middleware(middleware::MiddlewareDisplatch::Grayscale(
-        GrayscaleMiddleware::new(),
-    ));
+    let config = FeatureDetectionConfig {
+        num_features,
+        distance_to_border,
+        fast_threshold,
+    };
 
-    // chain = chain.add_middleware(match features_method {
-    //     FeaturePointsMethod::Fast => middleware::MiddlewareDisplatch::Fast(
-    //         FastFeatureDetectionMiddleware::new(FeatureDetectionConfig {
-    //             frame_scale: FrameScale::try_new(feature_frame_scale).unwrap(),
-    //             num_features: NonZero::new(200).unwrap(),
-    //             distance_to_border: 50,
-    //             fast_threshold: 30,
-    //             debug_features: false,
-    //         }),
-    //     ),
-    //     FeaturePointsMethod::Orb => middleware::MiddlewareDisplatch::Orb(
-    //         OrbFeatureDetectionMiddleware::new(FeatureDetectionConfig {
-    //             frame_scale: FrameScale::try_new(feature_frame_scale).unwrap(),
-    //             num_features: NonZero::new(200).unwrap(),
-    //             distance_to_border: 50,
-    //             fast_threshold: 30,
-    //             debug_features: false,
-    //         }),
-    //     ),
-    // });
-    // chain = chain.add_middleware(middleware::MiddlewareDisplatch::FeaturePointOverlay(
-    //     middleware::feature_point_overlay::FeaturePointOverlayMiddleware::new(
-    //         FrameScale::try_new(feature_frame_scale).unwrap(),
-    //     ),
-    // ));
+    chain = chain.add_middleware(match features_method {
+        FeaturePointsMethod::Fast => {
+            middleware::MiddlewareDisplatch::Fast(FastFeatureDetectionMiddleware::new(config))
+        }
+        FeaturePointsMethod::Orb => {
+            middleware::MiddlewareDisplatch::Orb(OrbFeatureDetectionMiddleware::new(config))
+        }
+    });
+
+    if debug_features {
+        chain = chain.add_middleware(middleware::MiddlewareDisplatch::FeaturePointOverlay(
+            middleware::feature_point_overlay::FeaturePointOverlayMiddleware::new(),
+        ));
+    }
 
     Ok(chain)
 }

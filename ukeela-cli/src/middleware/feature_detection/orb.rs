@@ -1,6 +1,4 @@
-use std::sync::Arc;
-
-use purecv::{core::Size, features2d::Orb};
+use purecv::features2d::Orb;
 
 use crate::{
     frame::Frame,
@@ -9,7 +7,6 @@ use crate::{
 
 #[derive(Debug)]
 pub struct OrbFeatureDetectionMiddleware {
-    config: FeatureDetectionConfig,
     detector: Orb,
 }
 
@@ -17,55 +14,39 @@ impl OrbFeatureDetectionMiddleware {
     pub fn new(config: FeatureDetectionConfig) -> Self {
         let mut detector = Orb::default();
         detector.set_nfeatures(config.num_features.get());
+        detector.set_edge_threshold(config.distance_to_border as i32);
+        detector.set_fast_threshold(config.fast_threshold);
 
-        Self { config, detector }
+        Self { detector }
     }
 
-    // TODO: use spawn_blocking
-    pub fn process_frame(&self, mut frame: Frame) -> anyhow::Result<Frame> {
-        let width =
-            ((frame.width as f32 * f32::from(self.config.frame_scale)).round() as usize).max(1);
-        let height =
-            ((frame.height as f32 * f32::from(self.config.frame_scale)).round() as usize).max(1);
-
-        let grayscale = if let Some(grayscale) = frame.metadata.grayscale.take() {
-            grayscale
-        } else {
+    async fn process_frame(&self, mut frame: Frame) -> anyhow::Result<Frame> {
+        if frame.metadata.grayscale.is_none() {
             return Err(anyhow::anyhow!("frame metadata don't contains grayscale"));
-        };
+        }
 
-        let resized = if grayscale.cols == width && grayscale.rows == height {
-            grayscale
-        } else {
-            Arc::new(purecv::imgproc::resize(
-                &grayscale,
-                Size::new(width, height),
-            )?)
-        };
+        let mut frame = tokio::runtime::Handle::current()
+            .spawn_blocking({
+                let detector = self.detector.clone();
 
-        let border_x = ((width as f32 * 0.1)
-            .max(self.config.distance_to_border as f32 * f32::from(self.config.frame_scale)))
-        .min(width as f32 / 2.0);
-        let border_y = ((height as f32 * 0.1)
-            .max(self.config.distance_to_border as f32 * f32::from(self.config.frame_scale)))
-        .min(height as f32 / 2.0);
+                move || {
+                    let grayscale = frame
+                        .metadata
+                        .grayscale
+                        .as_ref()
+                        .expect("we checked that it some");
 
-        let points: Vec<(u32, u32)> = self
-            .detector
-            .detect(&resized)?
-            .into_iter()
-            .filter(|keypoint| {
-                keypoint.pt.x >= border_x
-                    && keypoint.pt.y >= border_y
-                    && keypoint.pt.x < width as f32 - border_x
-                    && keypoint.pt.y < height as f32 - border_y
+                    let points = detector.detect(grayscale)?;
+
+                    frame.metadata.feature_points = points;
+
+                    Result::<_, anyhow::Error>::Ok(frame)
+                }
             })
-            .map(|keypoint| (keypoint.pt.x.round() as u32, keypoint.pt.y.round() as u32))
-            .collect();
+            .await??;
 
-        frame.metadata.feature_points = Some(points);
-        frame.metadata.motion_vectors = None;
-        frame.metadata.motion_matches = None;
+        frame.metadata.motion_vectors = Vec::new();
+        frame.metadata.motion_matches = Vec::new();
 
         Ok(frame)
     }
@@ -83,8 +64,6 @@ impl Middleware for OrbFeatureDetectionMiddleware {
     }
 
     async fn process_async(&self, frame: Frame) -> ProcessResult {
-        let frame = self.process_frame(frame)?;
-
-        Ok(frame)
+        self.process_frame(frame).await.map_err(Into::into)
     }
 }

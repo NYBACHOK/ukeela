@@ -1,5 +1,5 @@
 use image::Pixel;
-use purecv::core::Matrix;
+use purecv::core::{KeyPoint, Matrix};
 use std::{
     collections::BTreeMap,
     str::FromStr,
@@ -67,11 +67,11 @@ pub struct FrameMetadata {
     /// Monotonic time when the frame entered the pipeline.
     pub arrival_time: Option<Instant>,
     /// Per-feature displacements in feature-scaled pixel coordinates.
-    pub motion_vectors: Option<Vec<(i16, i16)>>,
+    pub motion_vectors: Vec<(i16, i16)>,
     /// Previous/current feature locations in feature-scaled pixel coordinates.
-    pub motion_matches: Option<Vec<MotionMatch>>,
+    pub motion_matches: Vec<MotionMatch>,
     /// Detected feature locations in feature-scaled pixel coordinates.
-    pub feature_points: Option<Vec<(u32, u32)>>,
+    pub feature_points: Vec<KeyPoint>,
     pub estimated_transform: Option<[f32; 6]>,
     pub processing_time: BTreeMap<&'static str, Duration>, // Track time per middleware
 }
