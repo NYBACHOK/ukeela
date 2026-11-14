@@ -1,4 +1,4 @@
-use std::{path::PathBuf, time::Duration};
+use std::path::PathBuf;
 
 use clap::Parser;
 use ukeela_cli::{ProcessingChainFlags, pipeline::gst::GstInputConfig, run};
@@ -53,10 +53,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let output = input.output();
     runtime.block_on(run(show_fps, input, output, chain_flags))?;
-
-    while runtime.metrics().num_alive_tasks() != 0 {
-        std::thread::sleep(Duration::from_millis(100));
-    }
 
     Ok(())
 }

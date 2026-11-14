@@ -14,6 +14,11 @@ edition = "2024"
 # tracing = { version = "0.1", features = [] }
 # tracing-subscriber = { version = "0.3", features = [] }
 
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+
 [workspace.lints.rust]
 rust_2018_idioms = "deny"
 # missing_docs = "deny"
