@@ -14,26 +14,18 @@ pub struct FastFeatureDetectionMiddleware {
 }
 
 impl FastFeatureDetectionMiddleware {
-    pub fn new(config: FeatureDetectionConfig) -> anyhow::Result<Self> {
-        if !config.frame_scale.is_finite() || config.frame_scale <= 0.0 || config.frame_scale > 1.0
-        {
-            return Err(anyhow::Error::msg(
-                "Frame scale must be finite and in (0.0, 1.0]",
-            ));
-        }
-        if config.num_features == 0 {
-            return Err(anyhow::Error::msg("Number of features must be positive"));
-        }
-
+    pub fn new(config: FeatureDetectionConfig) -> Self {
         let detector = FastFeatureDetector::new(config.fast_threshold, true, FastType::Type9_16);
 
-        Ok(Self { config, detector })
+        Self { config, detector }
     }
 
-    // TODO: use spawn_blocking
+    // TODO: use spawn_blocking?
     pub fn process_frame(&self, mut frame: Frame) -> anyhow::Result<Frame> {
-        let width = ((frame.width as f32 * self.config.frame_scale).round() as usize).max(1);
-        let height = ((frame.height as f32 * self.config.frame_scale).round() as usize).max(1);
+        let width =
+            ((frame.width as f32 * f32::from(self.config.frame_scale)).round() as usize).max(1);
+        let height =
+            ((frame.height as f32 * f32::from(self.config.frame_scale)).round() as usize).max(1);
 
         let grayscale = if let Some(grayscale) = frame.metadata.grayscale.take() {
             grayscale
@@ -51,10 +43,10 @@ impl FastFeatureDetectionMiddleware {
         };
 
         let border_x = ((width as f32 * 0.1)
-            .max(self.config.distance_to_border as f32 * self.config.frame_scale))
+            .max(self.config.distance_to_border as f32 * f32::from(self.config.frame_scale)))
         .min(width as f32 / 2.0);
         let border_y = ((height as f32 * 0.1)
-            .max(self.config.distance_to_border as f32 * self.config.frame_scale))
+            .max(self.config.distance_to_border as f32 * f32::from(self.config.frame_scale)))
         .min(height as f32 / 2.0);
 
         let mut keypoints = self.detector.detect(&resized)?;
@@ -69,7 +61,7 @@ impl FastFeatureDetectionMiddleware {
         frame.metadata.feature_points = Some(
             keypoints
                 .into_iter()
-                .take(self.config.num_features)
+                .take(self.config.num_features.get())
                 .map(|keypoint| (keypoint.pt.x.round() as u32, keypoint.pt.y.round() as u32))
                 .collect(),
         );
@@ -82,7 +74,7 @@ impl FastFeatureDetectionMiddleware {
 
 impl Default for FastFeatureDetectionMiddleware {
     fn default() -> Self {
-        Self::new(FeatureDetectionConfig::default()).expect("default FAST config is valid")
+        Self::new(FeatureDetectionConfig::default())
     }
 }
 
@@ -112,6 +104,7 @@ mod tests {
             Middleware, feature_detection::FeatureDetectionConfig,
             feature_point_overlay::FeaturePointOverlayMiddleware,
         },
+        types::frame_scale::FrameScale,
     };
 
     fn textured_image(size: usize) -> Arc<Matrix<u8>> {
@@ -128,14 +121,13 @@ mod tests {
 
     #[tokio::test]
     async fn detected_points_are_drawn_by_the_overlay() {
-        let frame_scale = 0.5;
+        let frame_scale = FrameScale::try_new(0.5).unwrap();
         let detector = FastFeatureDetectionMiddleware::new(FeatureDetectionConfig {
             frame_scale,
             distance_to_border: 0,
             ..FeatureDetectionConfig::default()
-        })
-        .expect("valid feature config");
-        let overlay = FeaturePointOverlayMiddleware::new(frame_scale).expect("valid overlay scale");
+        });
+        let overlay = FeaturePointOverlayMiddleware::new(frame_scale);
         let mut frame = Frame::new(Bytes::from(vec![0; 64 * 64 * 3]), 64, 64, VideoFormat::BGR);
         frame.metadata.grayscale = Some(textured_image(64));
 

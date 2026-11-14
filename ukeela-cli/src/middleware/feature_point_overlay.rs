@@ -1,22 +1,17 @@
 use crate::{
     frame::Frame,
     middleware::{Middleware, ProcessResult},
+    types::frame_scale::FrameScale,
 };
 
 #[derive(Debug, Clone, Copy)]
 pub struct FeaturePointOverlayMiddleware {
-    frame_scale: f32,
+    frame_scale: FrameScale,
 }
 
 impl FeaturePointOverlayMiddleware {
-    pub fn new(frame_scale: f32) -> anyhow::Result<Self> {
-        if !frame_scale.is_finite() || frame_scale <= 0.0 || frame_scale > 1.0 {
-            return Err(anyhow::Error::msg(
-                "Frame scale must be finite and in (0.0, 1.0]",
-            ));
-        }
-
-        Ok(Self { frame_scale })
+    pub fn new(frame_scale: FrameScale) -> Self {
+        Self { frame_scale }
     }
 
     fn process_frame(&self, mut frame: Frame) -> ProcessResult {
@@ -113,8 +108,7 @@ mod tests {
         let mut frame = frame(16, 16, VideoFormat::BGR);
         frame.metadata.feature_points = Some(vec![(4, 4), (50, 50)]);
 
-        let frame = FeaturePointOverlayMiddleware::new(0.5)
-            .unwrap()
+        let frame = FeaturePointOverlayMiddleware::new(FrameScale::try_new(0.5).unwrap())
             .process_async(frame)
             .await
             .unwrap();
@@ -135,8 +129,7 @@ mod tests {
         let mut frame = frame(2, 2, VideoFormat::BGRA);
         frame.metadata.feature_points = Some(vec![(1, 0)]);
 
-        let frame = FeaturePointOverlayMiddleware::new(1.0)
-            .unwrap()
+        let frame = FeaturePointOverlayMiddleware::new(FrameScale::try_new(1.0).unwrap())
             .process_async(frame)
             .await
             .unwrap();
@@ -149,8 +142,7 @@ mod tests {
         let frame = frame(2, 2, VideoFormat::BGR);
         let original = frame.data.clone();
 
-        let frame = FeaturePointOverlayMiddleware::new(1.0)
-            .unwrap()
+        let frame = FeaturePointOverlayMiddleware::new(FrameScale::try_new(1.0).unwrap())
             .process_async(frame)
             .await
             .unwrap();

@@ -14,27 +14,19 @@ pub struct OrbFeatureDetectionMiddleware {
 }
 
 impl OrbFeatureDetectionMiddleware {
-    pub fn new(config: FeatureDetectionConfig) -> anyhow::Result<Self> {
-        if !config.frame_scale.is_finite() || config.frame_scale <= 0.0 || config.frame_scale > 1.0
-        {
-            return Err(anyhow::Error::msg(
-                "Frame scale must be finite and in (0.0, 1.0]",
-            ));
-        }
-        if config.num_features == 0 {
-            return Err(anyhow::Error::msg("Number of features must be positive"));
-        }
-
+    pub fn new(config: FeatureDetectionConfig) -> Self {
         let mut detector = Orb::default();
-        detector.set_nfeatures(config.num_features);
+        detector.set_nfeatures(config.num_features.get());
 
-        Ok(Self { config, detector })
+        Self { config, detector }
     }
 
     // TODO: use spawn_blocking
     pub fn process_frame(&self, mut frame: Frame) -> anyhow::Result<Frame> {
-        let width = ((frame.width as f32 * self.config.frame_scale).round() as usize).max(1);
-        let height = ((frame.height as f32 * self.config.frame_scale).round() as usize).max(1);
+        let width =
+            ((frame.width as f32 * f32::from(self.config.frame_scale)).round() as usize).max(1);
+        let height =
+            ((frame.height as f32 * f32::from(self.config.frame_scale)).round() as usize).max(1);
 
         let grayscale = if let Some(grayscale) = frame.metadata.grayscale.take() {
             grayscale
@@ -52,10 +44,10 @@ impl OrbFeatureDetectionMiddleware {
         };
 
         let border_x = ((width as f32 * 0.1)
-            .max(self.config.distance_to_border as f32 * self.config.frame_scale))
+            .max(self.config.distance_to_border as f32 * f32::from(self.config.frame_scale)))
         .min(width as f32 / 2.0);
         let border_y = ((height as f32 * 0.1)
-            .max(self.config.distance_to_border as f32 * self.config.frame_scale))
+            .max(self.config.distance_to_border as f32 * f32::from(self.config.frame_scale)))
         .min(height as f32 / 2.0);
 
         let points: Vec<(u32, u32)> = self
@@ -81,7 +73,7 @@ impl OrbFeatureDetectionMiddleware {
 
 impl Default for OrbFeatureDetectionMiddleware {
     fn default() -> Self {
-        Self::new(FeatureDetectionConfig::default()).expect("default ORB config is valid")
+        Self::new(FeatureDetectionConfig::default())
     }
 }
 
