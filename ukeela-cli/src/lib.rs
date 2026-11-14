@@ -31,15 +31,38 @@ pub const DEFAULT_CHANELLS_SIZE: usize = 32;
 pub enum FeaturePointsMethod {
     Fast,
     Orb,
-    // #[display("open-cv")]
-    // OpenCV,
-    // OpenCVWithOpenCL,
-    // Vulkan,
-    // OpenCL,
+}
+
+/// Type of filter used for image convolution.
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, derive_more::Display, clap::ValueEnum)]
+#[display(rename_all = "lowercase")]
+pub enum FilterType {
+    Box,
+    #[default]
+    Bilinear,
+    Hamming,
+    CatmullRom,
+    Mitchell,
+    Gaussian,
+    Lanczos3,
+}
+
+impl From<FilterType> for fast_image_resize::FilterType {
+    fn from(value: FilterType) -> Self {
+        match value {
+            FilterType::Box => Self::Box,
+            FilterType::Bilinear => Self::Bilinear,
+            FilterType::Hamming => Self::Hamming,
+            FilterType::CatmullRom => Self::CatmullRom,
+            FilterType::Mitchell => Self::Mitchell,
+            FilterType::Gaussian => Self::Gaussian,
+            FilterType::Lanczos3 => Self::Lanczos3,
+        }
+    }
 }
 
 #[derive(Debug, Clone, clap::Args)]
-#[clap(next_help_heading = "Stabilization Flags")]
+#[clap(next_help_heading = "Processing Options")]
 pub struct ProcessingChainFlags {
     /// Scale original image to specific percent of it's original size
     #[arg(long, global = true, default_value_t = 25, value_parser = clap::value_parser!(u8).range(1..101), required = false)]
@@ -49,6 +72,8 @@ pub struct ProcessingChainFlags {
     pub crop_percent: u8,
     #[arg(long,global = true, default_value_t = FeaturePointsMethod::Fast, required = false)]
     pub features_method: FeaturePointsMethod,
+    #[arg(long,global = true, default_value_t = FilterType::Bilinear, required = false)]
+    pub filter_type: FilterType,
 }
 
 pub async fn run(
@@ -117,6 +142,7 @@ fn build_processing_chain(
         scale,
         crop_percent,
         features_method,
+        filter_type,
     }: ProcessingChainFlags,
 ) -> Result<ProcessingChain, anyhow::Error> {
     let mut chain = ProcessingChain::new();
@@ -124,7 +150,10 @@ fn build_processing_chain(
         .ok_or(anyhow::anyhow!("invalid frame scale"))?;
 
     chain = chain.add_middleware(middleware::MiddlewareDisplatch::Resize(
-        ResizeMiddleware::new(feature_frame_scale),
+        ResizeMiddleware::new(
+            feature_frame_scale,
+            fast_image_resize::ResizeAlg::Convolution(filter_type.into()),
+        ),
     ));
 
     // chain = chain.add_middleware(middleware::MiddlewareDisplatch::Grayscale(

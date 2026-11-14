@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use fast_image_resize::{FilterType, ResizeAlg, ResizeOptions, Resizer};
+use fast_image_resize::{ResizeAlg, ResizeOptions, Resizer};
 
 use crate::{
     frame::{Frame, FrameData},
@@ -12,11 +12,15 @@ use crate::{
 #[derive(Debug, Clone, Copy)]
 pub struct ResizeMiddleware {
     frame_scale: FrameScale,
+    resize_alg: ResizeAlg,
 }
 
 impl ResizeMiddleware {
-    pub fn new(frame_scale: FrameScale) -> Self {
-        Self { frame_scale }
+    pub fn new(frame_scale: FrameScale, resize_alg: ResizeAlg) -> Self {
+        Self {
+            frame_scale,
+            resize_alg,
+        }
     }
 
     #[inline]
@@ -37,7 +41,7 @@ impl ResizeMiddleware {
         let dst_height = u32::try_from(scaled_height).unwrap_or(u32::MAX);
 
         let mut resizer = Resizer::new(); // TODO: single instance
-        let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::Lanczos3));
+        let options = ResizeOptions::new().resize_alg(self.resize_alg);
 
         let resized = tokio::runtime::Handle::current()
             .spawn_blocking({
