@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use purecv::core::{Matrix, Size};
+use fast_image_resize::{FilterType, ResizeAlg, ResizeOptions, Resizer};
 
 use crate::{
     frame::{Frame, FrameData},
@@ -33,39 +33,26 @@ impl ResizeMiddleware {
         let scaled_width = self.scale_dim(frame.width);
         let scaled_height = self.scale_dim(frame.height);
 
-        let image = Matrix::from_vec(
-            frame.data.rows().count(),
-            frame.width,
-            frame.format.channels(),
-            frame.data.to_vec(),
-        );
+        let dst_width = u32::try_from(scaled_width).unwrap_or(u32::MAX);
+        let dst_height = u32::try_from(scaled_height).unwrap_or(u32::MAX);
 
-        let img = tokio::runtime::Handle::current()
+        let mut resizer = Resizer::new(); // TODO: single instance
+        let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::Lanczos3));
+
+        let resized = tokio::runtime::Handle::current()
             .spawn_blocking({
+                let src_image = frame.data.clone();
                 move || {
-                    let img = purecv::imgproc::resize(
-                        &image,
-                        Size {
-                            width: scaled_width,
-                            height: scaled_height,
-                        },
-                    )
-                    .context("image resizing")?;
-
-                    Result::<_, anyhow::Error>::Ok(img)
+                    let mut dst_image = FrameData::new(dst_width, dst_height);
+                    resizer
+                        .resize(src_image.as_ref(), &mut dst_image, &options)
+                        .context("image resizing")?;
+                    Result::<_, anyhow::Error>::Ok(dst_image)
                 }
             })
             .await??;
 
-        // Safer conversion from usize to u32 with error context
-        let width_u32 = u32::try_from(scaled_width).context("scaled width exceeds u32 limits")?;
-        let height_u32 =
-            u32::try_from(scaled_height).context("scaled height exceeds u32 limits")?;
-
-        let img = FrameData::from_raw(width_u32, height_u32, img.data)
-            .ok_or_else(|| anyhow::anyhow!("image mapping failed"))?;
-
-        frame.data = Arc::new(img);
+        frame.data = Arc::new(resized);
         frame.width = scaled_width;
         frame.height = scaled_height;
 

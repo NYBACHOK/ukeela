@@ -29,6 +29,7 @@ gstreamer-base = "0.25"
 # opencv = { version = "0.101", features = ["clang-runtime", "calib3d"] }
 # wgpu = "30.0"
 purecv = { version = "0.12", features = ["simd", "parallel"]} # "simd", "parallel"
+fast_image_resize = { version = "6.1", features = ["image", "rayon"] }
 
 tokio = { version = "1.35", features = ["full"] }
 # crossbeam = "0.8"`
