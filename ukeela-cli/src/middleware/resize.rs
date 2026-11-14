@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
 use fast_image_resize::{ResizeAlg, ResizeOptions, Resizer};
@@ -9,10 +9,11 @@ use crate::{
     types::frame_scale::FrameScale,
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct ResizeMiddleware {
     frame_scale: FrameScale,
     resize_alg: ResizeAlg,
+    resizer: Arc<Mutex<Resizer>>,
 }
 
 impl ResizeMiddleware {
@@ -20,6 +21,7 @@ impl ResizeMiddleware {
         Self {
             frame_scale,
             resize_alg,
+            resizer: Arc::new(Mutex::new(Resizer::new())),
         }
     }
 
@@ -40,15 +42,18 @@ impl ResizeMiddleware {
         let dst_width = u32::try_from(scaled_width).unwrap_or(u32::MAX);
         let dst_height = u32::try_from(scaled_height).unwrap_or(u32::MAX);
 
-        let mut resizer = Resizer::new(); // TODO: single instance
         let options = ResizeOptions::new().resize_alg(self.resize_alg);
 
         let resized = tokio::runtime::Handle::current()
             .spawn_blocking({
                 let src_image = frame.data.clone();
+                let resizer = Arc::clone(&self.resizer);
+
                 move || {
                     let mut dst_image = FrameData::new(dst_width, dst_height);
                     resizer
+                        .lock()
+                        .expect("poisoned lock")
                         .resize(src_image.as_ref(), &mut dst_image, &options)
                         .context("image resizing")?;
                     Result::<_, anyhow::Error>::Ok(dst_image)
