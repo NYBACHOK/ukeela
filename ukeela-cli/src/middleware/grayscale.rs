@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use purecv::{
     core::Matrix,
-    imgproc::{cvt_color_bgr_to_gray, cvt_color_bgra_to_gray},
+    imgproc::{cvt_color_bgr_to_gray, cvt_color_bgra_to_gray, cvt_color_rgba_to_gray},
 };
 
 use crate::{
@@ -47,10 +47,11 @@ impl GrayscaleMiddleware {
             row_bytes
         };
 
+        let pixels = frame.data.as_raw();
         let mut packed = Vec::with_capacity(packed_len);
         for row in 0..frame.height {
             let start = row * row_stride;
-            packed.extend_from_slice(&frame.data[start..start + row_bytes]);
+            packed.extend_from_slice(&pixels[start..start + row_bytes]);
         }
         let color = Matrix::from_vec(frame.height, frame.width, channels, packed);
 
@@ -59,6 +60,7 @@ impl GrayscaleMiddleware {
                 move || match frame.format {
                     VideoFormat::BGR => cvt_color_bgr_to_gray(&color),
                     VideoFormat::BGRA => cvt_color_bgra_to_gray(&color),
+                    VideoFormat::RGBA => cvt_color_rgba_to_gray(&color),
                 }
             })
             .await?

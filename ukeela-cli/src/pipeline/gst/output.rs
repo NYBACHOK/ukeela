@@ -130,6 +130,7 @@ impl GstOutputWriter {
                 let format = match &frame.format {
                     crate::frame::VideoFormat::BGR => "BGR",
                     crate::frame::VideoFormat::BGRA => "BGRA",
+                    crate::frame::VideoFormat::RGBA => "RGBA",
                 };
                 if last_caps != Some((width, height, format)) {
                     let mut caps_builder = gstreamer::Caps::builder("video/x-raw")
@@ -151,7 +152,7 @@ impl GstOutputWriter {
                     overlay.set_property("text", format!("FPS: {fps_val:.1}"));
                 }
 
-                let frame_data = frame.data.as_ref();
+                let frame_data = frame.data.as_raw();
 
                 // Convert Frame to GStreamer buffer
                 let mut buffer = gstreamer::Buffer::with_size(frame_data.len())

@@ -9,6 +9,7 @@ use crate::{
             orb::OrbFeatureDetectionMiddleware,
         },
         grayscale::GrayscaleMiddleware,
+        resize::ResizeMiddleware,
     },
     pipeline::{
         FramePipeline,
@@ -40,8 +41,11 @@ pub enum FeaturePointsMethod {
 #[derive(Debug, Clone, clap::Args)]
 #[clap(next_help_heading = "Stabilization Flags")]
 pub struct ProcessingChainFlags {
+    /// Scale original image to specific percent of it's original size
+    #[arg(long, global = true, default_value_t = 25, value_parser = clap::value_parser!(u8).range(1..101), required = false)]
+    pub scale: u8,
     /// Total percentage cropped from each frame dimension, split across opposite edges.
-    #[arg(long, global = true, default_value_t = 25, value_parser = clap::value_parser!(u8).range(1..100), required = false)]
+    #[arg(long, global = true, default_value_t = 25, value_parser = clap::value_parser!(u8).range(1..101), required = false)]
     pub crop_percent: u8,
     #[arg(long,global = true, default_value_t = FeaturePointsMethod::Fast, required = false)]
     pub features_method: FeaturePointsMethod,
@@ -110,42 +114,48 @@ pub async fn run(
 
 fn build_processing_chain(
     ProcessingChainFlags {
+        scale,
         crop_percent,
         features_method,
     }: ProcessingChainFlags,
 ) -> Result<ProcessingChain, anyhow::Error> {
     let mut chain = ProcessingChain::new();
-    let feature_frame_scale = f32::from(crop_percent) / 100.0;
+    let feature_frame_scale = FrameScale::try_new(f32::from(scale) / 100.0)
+        .ok_or(anyhow::anyhow!("invalid frame scale"))?;
 
-    chain = chain.add_middleware(middleware::MiddlewareDisplatch::Grayscale(
-        GrayscaleMiddleware::new(),
+    chain = chain.add_middleware(middleware::MiddlewareDisplatch::Resize(
+        ResizeMiddleware::new(feature_frame_scale),
     ));
 
-    chain = chain.add_middleware(match features_method {
-        FeaturePointsMethod::Fast => middleware::MiddlewareDisplatch::Fast(
-            FastFeatureDetectionMiddleware::new(FeatureDetectionConfig {
-                frame_scale: FrameScale::try_new(feature_frame_scale).unwrap(),
-                num_features: NonZero::new(200).unwrap(),
-                distance_to_border: 50,
-                fast_threshold: 30,
-                debug_features: false,
-            }),
-        ),
-        FeaturePointsMethod::Orb => middleware::MiddlewareDisplatch::Orb(
-            OrbFeatureDetectionMiddleware::new(FeatureDetectionConfig {
-                frame_scale: FrameScale::try_new(feature_frame_scale).unwrap(),
-                num_features: NonZero::new(200).unwrap(),
-                distance_to_border: 50,
-                fast_threshold: 30,
-                debug_features: false,
-            }),
-        ),
-    });
-    chain = chain.add_middleware(middleware::MiddlewareDisplatch::FeaturePointOverlay(
-        middleware::feature_point_overlay::FeaturePointOverlayMiddleware::new(
-            FrameScale::try_new(feature_frame_scale).unwrap(),
-        ),
-    ));
+    // chain = chain.add_middleware(middleware::MiddlewareDisplatch::Grayscale(
+    //     GrayscaleMiddleware::new(),
+    // ));
+
+    // chain = chain.add_middleware(match features_method {
+    //     FeaturePointsMethod::Fast => middleware::MiddlewareDisplatch::Fast(
+    //         FastFeatureDetectionMiddleware::new(FeatureDetectionConfig {
+    //             frame_scale: FrameScale::try_new(feature_frame_scale).unwrap(),
+    //             num_features: NonZero::new(200).unwrap(),
+    //             distance_to_border: 50,
+    //             fast_threshold: 30,
+    //             debug_features: false,
+    //         }),
+    //     ),
+    //     FeaturePointsMethod::Orb => middleware::MiddlewareDisplatch::Orb(
+    //         OrbFeatureDetectionMiddleware::new(FeatureDetectionConfig {
+    //             frame_scale: FrameScale::try_new(feature_frame_scale).unwrap(),
+    //             num_features: NonZero::new(200).unwrap(),
+    //             distance_to_border: 50,
+    //             fast_threshold: 30,
+    //             debug_features: false,
+    //         }),
+    //     ),
+    // });
+    // chain = chain.add_middleware(middleware::MiddlewareDisplatch::FeaturePointOverlay(
+    //     middleware::feature_point_overlay::FeaturePointOverlayMiddleware::new(
+    //         FrameScale::try_new(feature_frame_scale).unwrap(),
+    //     ),
+    // ));
 
     Ok(chain)
 }

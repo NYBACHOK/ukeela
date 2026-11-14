@@ -1,4 +1,4 @@
-use bytes::Bytes;
+use image::Pixel;
 use purecv::core::Matrix;
 use std::{
     collections::BTreeMap,
@@ -7,6 +7,8 @@ use std::{
     time::{Duration, Instant},
 };
 use time::UtcDateTime;
+
+pub type FrameData = image::ImageBuffer<image::Rgba<u8>, Vec<u8>>;
 
 /// Shared frame buffer to minimize allocations
 #[derive(Clone, Default)]
@@ -17,16 +19,17 @@ pub struct Frame {
     pub height: usize,
     pub format: VideoFormat,
     /// Actual pixel data - copied only when needed
-    pub data: Arc<Bytes>,
+    pub data: Arc<FrameData>,
     /// Metadata passed through pipeline
     pub metadata: FrameMetadata,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
 pub enum VideoFormat {
-    #[default]
     BGR,
     BGRA,
+    #[default]
+    RGBA,
 }
 
 impl FromStr for VideoFormat {
@@ -36,6 +39,7 @@ impl FromStr for VideoFormat {
         let res = match s.to_ascii_lowercase().as_str() {
             "bgr" => Self::BGR,
             "bgra" => Self::BGRA,
+            "rgba" => Self::RGBA,
             _ => return Err(format!("unknow video format : {s}")),
         };
 
@@ -48,6 +52,7 @@ impl VideoFormat {
         match self {
             VideoFormat::BGR => 3,
             VideoFormat::BGRA => 4,
+            VideoFormat::RGBA => image::Rgba::<u8>::CHANNEL_COUNT as usize,
         }
     }
 }
@@ -75,7 +80,7 @@ pub struct FrameMetadata {
 pub type MotionMatch = ((f32, f32), (f32, f32));
 
 impl Frame {
-    pub fn new(data: Bytes, width: usize, height: usize, format: VideoFormat) -> Self {
+    pub fn new(data: FrameData, width: usize, height: usize, format: VideoFormat) -> Self {
         static FRAME_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
         Self {

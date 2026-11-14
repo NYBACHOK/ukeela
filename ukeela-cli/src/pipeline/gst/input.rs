@@ -1,7 +1,6 @@
 use std::str::FromStr;
 
 use anyhow::{Context, anyhow};
-use bytes::Bytes;
 use futures_util::StreamExt;
 use gstreamer::{
     glib::object::Cast,
@@ -32,7 +31,7 @@ impl GstInputReader {
                 format!(
                     "v4l2src device={camera_device} extra-controls=\"s,auto_exposure=3,exposure_dynamic_framerate=0\" ! \
      image/jpeg,width={width},height={height},framerate={fps}/1 ! \
-     jpegdec ! videoconvert ! video/x-raw,format=BGRA ! appsink name=sink sync=false emit-signals=true"
+     jpegdec ! videoconvert ! video/x-raw,format=RGBA ! appsink name=sink sync=false emit-signals=true"
                 )
             }
             GstInputConfig::Libcamera {
@@ -42,7 +41,7 @@ impl GstInputReader {
                 fps,
             } => format!(
                 "libcamerasrc ae-metering-mode=spot ! \
-                 video/x-raw,format=BGR,width={width},height={height},framerate={fps}/1 ! \
+                 video/x-raw,format=RGBA,width={width},height={height},framerate={fps}/1 ! \
                  appsink name=sink max-buffers=1 drop=true"
             ),
             GstInputConfig::File { path, output: _ } => {
@@ -169,21 +168,21 @@ fn process_sample(
     let height = structure
         .get::<i32>("height")
         .context("Sample caps have no valid height")? as u32;
-    let format = structure
-        .get::<String>("format")
-        .context("Sample caps have no valid pixel format")?;
-    let format = VideoFormat::from_str(&format).map_err(|e| anyhow::anyhow!(e))?;
 
     let buffer = sample.buffer().context("Sample has no buffer")?;
     let mapped = buffer
         .map_readable()
         .context("Failed to map sample buffer")?;
-    let frame = Frame::new(
-        Bytes::copy_from_slice(&mapped),
-        width as usize,
-        height as usize,
-        format,
-    );
+
+    let format = structure
+        .get::<String>("format")
+        .context("Sample caps have no valid pixel format")?;
+    let format = VideoFormat::from_str(&format).map_err(|e| anyhow::anyhow!(e))?;
+
+    let img = image::ImageBuffer::from_raw(width, height, mapped.as_slice().to_vec())
+        .context("Buffer size doesn't match caps dimensions")?;
+
+    let frame = Frame::new(img, width as usize, height as usize, format);
 
     input_handle
         .send_frame_nonblocking(frame)

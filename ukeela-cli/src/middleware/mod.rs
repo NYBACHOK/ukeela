@@ -5,6 +5,7 @@ use crate::{
             fast::FastFeatureDetectionMiddleware, orb::OrbFeatureDetectionMiddleware,
         },
         grayscale::GrayscaleMiddleware,
+        resize::ResizeMiddleware,
     },
 };
 
@@ -55,6 +56,7 @@ pub enum MiddlewareDisplatch {
     Orb(OrbFeatureDetectionMiddleware),
     FeaturePointOverlay(feature_point_overlay::FeaturePointOverlayMiddleware),
     Grayscale(GrayscaleMiddleware),
+    Resize(ResizeMiddleware),
     // Warp(warp::WarpMiddleware),
     // Ema(EmaMiddleware),
     // FeaturePoints(FeaturePointsMiddleware),
@@ -70,6 +72,7 @@ impl Middleware for MiddlewareDisplatch {
             Self::Orb(v) => v.name(),
             Self::FeaturePointOverlay(v) => v.name(),
             Self::Grayscale(v) => v.name(),
+            Self::Resize(v) => v.name(),
             // Self::Warp(v) => v.name(),
             // MiddlewareDisplatch::Ema(v) => v.name(),
             // MiddlewareDisplatch::FeaturePoints(v) => v.name(),
@@ -85,6 +88,7 @@ impl Middleware for MiddlewareDisplatch {
             Self::Orb(v) => v.process_async(frame).await,
             Self::FeaturePointOverlay(v) => v.process_async(frame).await,
             Self::Grayscale(v) => v.process_async(frame).await,
+            Self::Resize(v) => v.process_async(frame).await,
             // Self::Warp(v) => v.process_async(frame).await,
             // MiddlewareDisplatch::Ema(v) => v.process_async(frame).await,
             // MiddlewareDisplatch::FeaturePoints(v) => v.process_async(frame).await,

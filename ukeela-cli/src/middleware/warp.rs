@@ -1,6 +1,5 @@
 use std::sync::{Arc, Mutex};
 
-use bytes::Bytes;
 use purecv::{
     core::{
         Matrix,
@@ -127,10 +126,11 @@ impl WarpMiddleware {
         } else {
             row_bytes
         };
+        let pixels = frame.data.as_raw();
         let mut packed = Vec::with_capacity(packed_len);
         for row in 0..frame.height {
             let start = row * row_stride;
-            packed.extend_from_slice(&frame.data[start..start + row_bytes]);
+            packed.extend_from_slice(&pixels[start..start + row_bytes]);
         }
 
         let image = Matrix::from_vec(frame.height, frame.width, channels, packed);
@@ -148,7 +148,13 @@ impl WarpMiddleware {
         let (cropped, crop_x, crop_y) = crop_image(&warped, self.crop_percent)?;
         frame.width = cropped.cols;
         frame.height = cropped.rows;
-        frame.data = Arc::new(Bytes::from(cropped.data));
+        let image = image::ImageBuffer::from_raw(
+            cropped.cols as u32,
+            cropped.rows as u32,
+            cropped.data,
+        )
+        .expect("warped image must be a valid image buffer");
+        frame.data = Arc::new(image);
         if inverse.is_some() {
             let estimated_transform = [
                 (transform.data[0]) as f32,
@@ -250,10 +256,11 @@ fn frame_grayscale(frame: &Frame, frame_scale: f32) -> anyhow::Result<Matrix<u8>
         } else {
             row_bytes
         };
+        let pixels = frame.data.as_raw();
         let mut packed = Vec::with_capacity(packed_len);
         for row in 0..frame.height {
             let start = row * stride;
-            packed.extend_from_slice(&frame.data[start..start + row_bytes]);
+            packed.extend_from_slice(&pixels[start..start + row_bytes]);
         }
         let color = Matrix::from_vec(frame.height, frame.width, channels, packed);
         match frame.format {
@@ -539,8 +546,6 @@ fn inverse_transform(motion: SimilarityTransform) -> Option<Matrix<f64>> {
 
 #[cfg(test)]
 mod tests {
-    use bytes::Bytes;
-
     use super::{MIN_MATCHES, WarpMiddleware};
     use crate::{
         frame::{Frame, MotionMatch, VideoFormat},
@@ -557,9 +562,26 @@ mod tests {
             .collect()
     }
 
+    fn raw_frame(width: usize, height: usize, data: Vec<u8>, format: VideoFormat) -> Frame {
+        let raw = match format {
+            VideoFormat::BGR | VideoFormat::BGRA | VideoFormat::RGBA => {
+                let bytes_per_pixel = format.channels();
+                assert_eq!(data.len(), width * height * bytes_per_pixel.max(4));
+                data
+            }
+        };
+        Frame::new(
+            image::ImageBuffer::from_raw(width as u32, height as u32, raw)
+                .expect("raw frame data should be valid"),
+            width,
+            height,
+            format,
+        )
+    }
+
     #[tokio::test]
     async fn applies_identity_when_there_are_no_motion_matches() {
-        let mut frame = Frame::new(Bytes::from(vec![80; 16 * 16 * 3]), 16, 16, VideoFormat::BGR);
+        let mut frame = raw_frame(16, 16, vec![80; 16 * 16 * 4], VideoFormat::RGBA);
         frame.metadata.motion_matches =
             Some(translated_matches(2.0, 1.0)[..MIN_MATCHES - 1].to_vec());
 
@@ -570,13 +592,13 @@ mod tests {
             .expect("frame should pass through");
 
         assert_eq!((processed.width, processed.height), (16, 16));
-        assert_eq!(processed.data.len(), 16 * 16 * 3);
+        assert_eq!(processed.data.len(), 16 * 16 * 4);
         assert!(processed.metadata.estimated_transform.is_none());
     }
 
     #[tokio::test]
     async fn crops_output_resolution_by_configured_percentage() {
-        let frame = Frame::new(Bytes::from(vec![80; 80 * 40 * 3]), 80, 40, VideoFormat::BGR);
+        let frame = raw_frame(80, 40, vec![80; 80 * 40 * 4], VideoFormat::RGBA);
         let processed = WarpMiddleware::new(0.25)
             .expect("valid frame scale")
             .with_crop_percent(25)
@@ -586,7 +608,7 @@ mod tests {
             .expect("crop should succeed");
 
         assert_eq!((processed.width, processed.height), (60, 30));
-        assert_eq!(processed.data.len(), 60 * 30 * 3);
+        assert_eq!(processed.data.len(), 60 * 30 * 4);
     }
 
     #[tokio::test]
@@ -605,16 +627,14 @@ mod tests {
             .collect::<Vec<_>>();
         let middleware = WarpMiddleware::new(1.0).expect("valid frame scale");
 
-        let mut previous = Frame::new(
-            Bytes::from(
-                source
-                    .iter()
-                    .flat_map(|&gray| [gray, gray, gray])
-                    .collect::<Vec<_>>(),
-            ),
+        let mut previous = raw_frame(
             width,
             height,
-            VideoFormat::BGR,
+            source
+                .iter()
+                .flat_map(|&gray| [gray, gray, gray, 255_u8])
+                .collect::<Vec<_>>(),
+            VideoFormat::RGBA,
         );
         previous.metadata.feature_points = Some(points.clone());
         middleware
@@ -630,16 +650,14 @@ mod tests {
                 translated[y * width + x] = source[source_y * width + source_x];
             }
         }
-        let mut current = Frame::new(
-            Bytes::from(
-                translated
-                    .iter()
-                    .flat_map(|&gray| [gray, gray, gray])
-                    .collect::<Vec<_>>(),
-            ),
+        let mut current = raw_frame(
             width,
             height,
-            VideoFormat::BGR,
+            translated
+                .iter()
+                .flat_map(|&gray| [gray, gray, gray, 255_u8])
+                .collect::<Vec<_>>(),
+            VideoFormat::RGBA,
         );
         current.metadata.feature_points = Some(points);
 
@@ -663,7 +681,15 @@ mod tests {
                 [value, value, value]
             })
             .collect::<Vec<_>>();
-        let mut frame = Frame::new(Bytes::from(pixels), 32, 24, VideoFormat::BGR);
+        let mut frame = raw_frame(
+            32,
+            24,
+            pixels
+                .into_iter()
+                .flat_map(|value| [value, value, value, 255_u8])
+                .collect(),
+            VideoFormat::RGBA,
+        );
         frame.metadata.motion_matches = Some(translated_matches(2.0, 1.0));
         frame.metadata.feature_points = Some(vec![(15, 12)]);
 
@@ -673,26 +699,22 @@ mod tests {
             .await
             .expect("frame should be warped");
 
+        let raw = processed.data.as_raw();
         assert_eq!((processed.width, processed.height), (32, 24));
-        assert_eq!(processed.data.len(), 32 * 24 * 3);
+        assert_eq!(processed.data.len(), 32 * 24 * 4);
         assert_eq!(
             processed.metadata.feature_points.as_deref(),
             Some(&[(13, 11)][..])
         );
         assert!((processed.metadata.estimated_transform.expect("transform")[2] + 2.0).abs() < 0.01);
-        assert_eq!(processed.data[(12 * 32 + 10) * 3], 48);
+        assert_eq!(raw[(12 * 32 + 10) * 4], 48);
     }
 
     #[tokio::test]
     async fn estimates_motion_robustly_with_outlier_matches() {
         let mut matches = translated_matches(2.0, -1.0);
         matches[0] = ((5.0, 5.0), (100.0, 80.0));
-        let mut frame = Frame::new(
-            Bytes::from(vec![100; 32 * 24 * 4]),
-            32,
-            24,
-            VideoFormat::BGRA,
-        );
+        let mut frame = raw_frame(32, 24, vec![100; 32 * 24 * 4], VideoFormat::RGBA);
         frame.metadata.motion_matches = Some(matches);
 
         let processed = WarpMiddleware::new(1.0)
@@ -709,12 +731,7 @@ mod tests {
 
     #[tokio::test]
     async fn falls_back_to_average_motion_vectors() {
-        let mut frame = Frame::new(
-            Bytes::from(vec![100; 32 * 24 * 3]),
-            32,
-            24,
-            VideoFormat::BGR,
-        );
+        let mut frame = raw_frame(32, 24, vec![100; 32 * 24 * 4], VideoFormat::RGBA);
         frame.metadata.motion_vectors = Some(vec![(1, -2); MIN_MATCHES]);
 
         let processed = WarpMiddleware::new(0.5)
@@ -743,12 +760,7 @@ mod tests {
                 ((x, y), current)
             })
             .collect();
-        let mut frame = Frame::new(
-            Bytes::from(vec![100; 32 * 24 * 3]),
-            32,
-            24,
-            VideoFormat::BGR,
-        );
+        let mut frame = raw_frame(32, 24, vec![100; 32 * 24 * 4], VideoFormat::RGBA);
         frame.metadata.motion_matches = Some(matches);
 
         let processed = WarpMiddleware::new(1.0)

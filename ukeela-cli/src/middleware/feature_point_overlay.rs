@@ -40,7 +40,7 @@ impl FeaturePointOverlayMiddleware {
         let width = usize::try_from(frame.width)?;
         let height = usize::try_from(frame.height)?;
         let scale = f64::from(self.frame_scale);
-        let mut data = frame.data.to_vec();
+        let mut data = frame.data.as_raw().to_vec();
 
         for &(feature_x, feature_y) in points {
             let x = (f64::from(feature_x) / scale).round();
@@ -67,7 +67,10 @@ impl FeaturePointOverlayMiddleware {
             }
         }
 
-        frame.data = std::sync::Arc::new(data.into());
+        let image = image::ImageBuffer::from_raw(width as u32, height as u32, data)
+            .expect("image is always valid");
+
+        frame.data = std::sync::Arc::new(image);
 
         Ok(frame)
     }
@@ -85,27 +88,25 @@ impl Middleware for FeaturePointOverlayMiddleware {
 
 #[cfg(test)]
 mod tests {
-    use bytes::Bytes;
-
     use crate::frame::VideoFormat;
 
     use super::*;
 
     fn frame(width: usize, height: usize, format: VideoFormat) -> Frame {
-        Frame::new(
-            Bytes::from(vec![
-                10;
-                width as usize * height as usize * format.channels()
-            ]),
-            width,
-            height,
-            format,
+        let bytes_per_pixel = format.channels();
+        let image = image::ImageBuffer::from_raw(
+            width as u32,
+            height as u32,
+            vec![10; width * height * bytes_per_pixel.max(4)],
         )
+        .expect("invalid image");
+
+        Frame::new(image, width, height, format)
     }
 
     #[tokio::test]
     async fn colors_scaled_bgr_feature_points_green() {
-        let mut frame = frame(16, 16, VideoFormat::BGR);
+        let mut frame = frame(16, 16, VideoFormat::RGBA);
         frame.metadata.feature_points = Some(vec![(4, 4), (50, 50)]);
 
         let frame = FeaturePointOverlayMiddleware::new(FrameScale::try_new(0.5).unwrap())
@@ -113,13 +114,13 @@ mod tests {
             .await
             .unwrap();
 
-        let pixel = (8 * 16 + 8) * 3;
-        assert_eq!(&frame.data[pixel..pixel + 3], &[0, 255, 0]);
-        assert_eq!(&frame.data[0..3], &[10, 10, 10]);
-        let pixels_colored = frame
-            .data
-            .chunks_exact(3)
-            .filter(|pixel| *pixel == [0, 255, 0])
+        let raw = frame.data.as_raw();
+        let pixel = (8 * 16 + 8) * 4;
+        assert_eq!(&raw[pixel..pixel + 4], &[0, 255, 0, 10]);
+        assert_eq!(&raw[0..4], &[10, 10, 10, 10]);
+        let pixels_colored = raw
+            .chunks_exact(4)
+            .filter(|pixel| *pixel == [0, 255, 0, 10])
             .count();
         assert_eq!(pixels_colored, 29);
     }
@@ -134,12 +135,14 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(&frame.data[4..8], &[0, 255, 0, 10]);
+        let data = frame.data.as_raw();
+
+        assert_eq!(&data[4..8], &[0, 255, 0, 10]);
     }
 
     #[tokio::test]
     async fn leaves_frames_without_feature_points_unchanged() {
-        let frame = frame(2, 2, VideoFormat::BGR);
+        let frame = frame(2, 2, VideoFormat::RGBA);
         let original = frame.data.clone();
 
         let frame = FeaturePointOverlayMiddleware::new(FrameScale::try_new(1.0).unwrap())

@@ -94,7 +94,6 @@ impl Middleware for FastFeatureDetectionMiddleware {
 mod tests {
     use std::sync::Arc;
 
-    use bytes::Bytes;
     use purecv::core::Matrix;
 
     use super::FastFeatureDetectionMiddleware;
@@ -121,6 +120,10 @@ mod tests {
 
     #[tokio::test]
     async fn detected_points_are_drawn_by_the_overlay() {
+        let size = 64;
+
+        let image = image::ImageBuffer::from_raw(size, size, vec![0; 64 * 64 * 4]).unwrap();
+
         let frame_scale = FrameScale::try_new(0.5).unwrap();
         let detector = FastFeatureDetectionMiddleware::new(FeatureDetectionConfig {
             frame_scale,
@@ -128,8 +131,8 @@ mod tests {
             ..FeatureDetectionConfig::default()
         });
         let overlay = FeaturePointOverlayMiddleware::new(frame_scale);
-        let mut frame = Frame::new(Bytes::from(vec![0; 64 * 64 * 3]), 64, 64, VideoFormat::BGR);
-        frame.metadata.grayscale = Some(textured_image(64));
+        let mut frame = Frame::new(image, size as usize, size as usize, VideoFormat::BGR);
+        frame.metadata.grayscale = Some(textured_image(size as usize));
 
         let frame = detector
             .process_async(frame)
@@ -149,6 +152,7 @@ mod tests {
             .expect("overlay should succeed");
         let green_pixels = frame
             .data
+            .as_raw()
             .chunks_exact(3)
             .filter(|pixel| *pixel == [0, 255, 0])
             .count();
