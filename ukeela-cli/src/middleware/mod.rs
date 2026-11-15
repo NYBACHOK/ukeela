@@ -6,7 +6,9 @@ use crate::{
             overlay::FeaturePointOverlayMiddleware,
         },
         grayscale::GrayscaleMiddleware,
-        optical_flow::motion_matches::MotionMatchesMiddleware,
+        optical_flow::{
+            motion_matches::MotionMatchesMiddleware, overlay::MotionMatchesOverlayMiddleware,
+        },
         resize::ResizeMiddleware,
     },
 };
@@ -59,6 +61,7 @@ pub enum MiddlewareDisplatch {
     Grayscale(GrayscaleMiddleware),
     Resize(ResizeMiddleware),
     MotionMatches(MotionMatchesMiddleware),
+    MotionMatchesOverlay(MotionMatchesOverlayMiddleware),
 }
 
 impl Middleware for MiddlewareDisplatch {
@@ -71,6 +74,7 @@ impl Middleware for MiddlewareDisplatch {
             Self::Grayscale(v) => v.name(),
             Self::Resize(v) => v.name(),
             Self::MotionMatches(v) => v.name(),
+            Self::MotionMatchesOverlay(v) => v.name(),
         }
     }
 
@@ -83,6 +87,7 @@ impl Middleware for MiddlewareDisplatch {
             Self::Grayscale(v) => v.process_async(frame).await,
             Self::Resize(v) => v.process_async(frame).await,
             Self::MotionMatches(v) => v.process_async(frame).await,
+            Self::MotionMatchesOverlay(v) => v.process_async(frame).await,
         }
     }
 }

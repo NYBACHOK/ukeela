@@ -9,7 +9,9 @@ use crate::{
             orb::OrbFeatureDetectionMiddleware, overlay::FeaturePointOverlayMiddleware,
         },
         grayscale::GrayscaleMiddleware,
-        optical_flow::motion_matches::MotionMatchesMiddleware,
+        optical_flow::{
+            motion_matches::MotionMatchesMiddleware, overlay::MotionMatchesOverlayMiddleware,
+        },
         resize::ResizeMiddleware,
     },
     pipeline::{
@@ -77,6 +79,9 @@ pub struct ProcessingChainFlags {
     /// Show found features on image
     #[arg(long, global = true, default_value_t = false, required = false)]
     pub debug_features: bool,
+    /// Show optical-flow motion vectors on the image
+    #[arg(long, global = true, default_value_t = false, required = false)]
+    pub debug_motion_vectors: bool,
     #[arg(long, global = true, default_value_t = NonZero::new(100).unwrap(), required = false)]
     pub num_features: NonZero<usize>,
     #[arg(long, global = true, default_value_t = 50, required = false)]
@@ -150,6 +155,7 @@ fn build_processing_chain(
         features_method,
         filter_type,
         debug_features,
+        debug_motion_vectors,
         num_features,
         distance_to_border,
         fast_threshold,
@@ -193,6 +199,12 @@ fn build_processing_chain(
     chain = chain.add_middleware(middleware::MiddlewareDisplatch::MotionMatches(
         MotionMatchesMiddleware::default(),
     ));
+
+    if debug_motion_vectors {
+        chain = chain.add_middleware(middleware::MiddlewareDisplatch::MotionMatchesOverlay(
+            MotionMatchesOverlayMiddleware::new(),
+        ));
+    }
 
     Ok(chain)
 }
