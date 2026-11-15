@@ -30,14 +30,15 @@ gstreamer-base = "0.25"
 # opencv = { version = "0.101", features = ["clang-runtime", "calib3d"] }
 # wgpu = "30.0"
 purecv = { version = "0.12", features = ["simd", "parallel"]} # "simd", "parallel"
-fast_image_resize = { version = "6.1", features = ["image", "rayon"] }
 
 tokio = { version = "1.35", features = ["full"] }
 # crossbeam = "0.8"
-
 serde = { version = "1.0", features = ["derive"] }
+
+# Image processing
 image = { version = "0.25", default-features = false, features = ["rayon"]}
-# bytemuck = { version = "1.14", features = ["derive"] }
+fast_image_resize = { version = "6.1", features = ["image", "rayon"] }
+imageproc = "0.27"
 
 # Logging
 tracing = { version = "0.1", features = [] }

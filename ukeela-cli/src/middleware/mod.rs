@@ -1,3 +1,4 @@
+pub mod stabilization;
 use crate::{
     frame::Frame,
     middleware::{
@@ -11,6 +12,7 @@ use crate::{
             overlay::MotionMatchesOverlayMiddleware,
         },
         resize::ResizeMiddleware,
+        stabilization::StabilizationMiddleware,
     },
 };
 
@@ -64,6 +66,7 @@ pub enum MiddlewareDisplatch {
     MotionMatches(MotionMatchesMiddleware),
     MotionMatchesOverlay(MotionMatchesOverlayMiddleware),
     MotionEstimation(MotionEstimationMiddleware),
+    Stabilization(StabilizationMiddleware),
 }
 
 impl Middleware for MiddlewareDisplatch {
@@ -78,6 +81,7 @@ impl Middleware for MiddlewareDisplatch {
             Self::MotionMatches(v) => v.name(),
             Self::MotionMatchesOverlay(v) => v.name(),
             Self::MotionEstimation(v) => v.name(),
+            Self::Stabilization(v) => v.name(),
         }
     }
 
@@ -92,6 +96,7 @@ impl Middleware for MiddlewareDisplatch {
             Self::MotionMatches(v) => v.process_async(frame).await,
             Self::MotionMatchesOverlay(v) => v.process_async(frame).await,
             Self::MotionEstimation(v) => v.process_async(frame).await,
+            Self::Stabilization(v) => v.process_async(frame).await,
         }
     }
 }

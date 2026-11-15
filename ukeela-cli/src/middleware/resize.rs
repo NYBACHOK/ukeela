@@ -7,18 +7,18 @@ use crate::{
     POISONED_LOCK_MSG,
     frame::{Frame, FrameData},
     middleware::{Middleware, ProcessResult},
-    types::frame_scale::FrameScale,
+    types::percent::Percent,
 };
 
 #[derive(Debug)]
 pub struct ResizeMiddleware {
-    frame_scale: FrameScale,
+    frame_scale: Percent,
     resize_alg: ResizeAlg,
     resizer: Arc<Mutex<Resizer>>,
 }
 
 impl ResizeMiddleware {
-    pub fn new(frame_scale: FrameScale, resize_alg: ResizeAlg) -> Self {
+    pub fn new(frame_scale: Percent, resize_alg: ResizeAlg) -> Self {
         Self {
             frame_scale,
             resize_alg,

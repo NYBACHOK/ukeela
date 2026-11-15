@@ -14,12 +14,13 @@ use crate::{
             matches::MotionMatchesMiddleware, overlay::MotionMatchesOverlayMiddleware,
         },
         resize::ResizeMiddleware,
+        stabilization::StabilizationMiddleware,
     },
     pipeline::{
         FramePipeline,
         gst::{GstInputConfig, GstInputReader, GstOutputConfig, GstOutputWriter},
     },
-    types::frame_scale::FrameScale,
+    types::percent::Percent,
 };
 
 pub mod frame;
@@ -73,6 +74,15 @@ pub struct ProcessingChainFlags {
     /// Scale original image to specific percent of it's original size
     #[arg(long, global = true, default_value_t = 25, value_parser = clap::value_parser!(u8).range(1..101), required = false)]
     pub scale: u8,
+    /// Crop this percentage from each edge for stabilization
+    #[arg(long, global = true, default_value_t = 5, value_parser = clap::value_parser!(u8).range(1..51), required = false)]
+    pub crop: u8,
+    /// Weight of the latest motion estimate in smoothing (percent; higher is more responsive)
+    #[arg(long, global = true, default_value_t = 50, value_parser = clap::value_parser!(u8).range(1..101), required = false)]
+    pub smoothing_factor: u8,
+    /// Draw the stabilization crop boundary without warping or cropping
+    #[arg(long, global = true, default_value_t = false, required = false)]
+    pub display_stabilization: bool,
     #[arg(long,global = true, default_value_t = FeaturePointsMethod::Fast, required = false)]
     pub features_method: FeaturePointsMethod,
     #[arg(long,global = true, default_value_t = FilterType::Bilinear, required = false)]
@@ -155,6 +165,9 @@ pub async fn run(
 fn build_processing_chain(
     ProcessingChainFlags {
         scale,
+        crop,
+        smoothing_factor,
+        display_stabilization,
         features_method,
         filter_type,
         display_features,
@@ -165,8 +178,12 @@ fn build_processing_chain(
         motion_min_matches,
     }: ProcessingChainFlags,
 ) -> Result<ProcessingChain, anyhow::Error> {
-    let feature_frame_scale = FrameScale::try_new(f32::from(scale) / 100.0)
-        .ok_or(anyhow::anyhow!("invalid frame scale"))?;
+    let feature_frame_scale =
+        Percent::try_new(f32::from(scale) / 100.0).ok_or(anyhow::anyhow!("invalid frame scale"))?;
+    let stabilization_crop =
+        Percent::try_new(f32::from(crop) / 100.0).ok_or(anyhow::anyhow!("invalid frame scale"))?;
+    let stabilization_smoothing = Percent::try_new(f32::from(smoothing_factor) / 100.0)
+        .ok_or(anyhow::anyhow!("invalid stabilization smoothing factor"))?;
 
     let mut chain = ProcessingChain::new()
         .add_middleware(middleware::MiddlewareDisplatch::Resize(
@@ -213,6 +230,14 @@ fn build_processing_chain(
             MotionMatchesOverlayMiddleware::new(),
         ));
     }
+
+    chain = chain.add_middleware(middleware::MiddlewareDisplatch::Stabilization(
+        StabilizationMiddleware::new(
+            display_stabilization,
+            stabilization_crop,
+            stabilization_smoothing,
+        ),
+    ));
 
     Ok(chain)
 }

@@ -1,7 +1,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default)]
-pub struct FrameScale(f32);
+pub struct Percent(f32);
 
-impl FrameScale {
+impl Percent {
     pub fn try_new(scale: f32) -> Option<Self> {
         if !scale.is_finite() || scale <= 0.0 || scale > 1.0 {
             return None;
@@ -11,14 +11,14 @@ impl FrameScale {
     }
 }
 
-impl From<FrameScale> for f32 {
-    fn from(value: FrameScale) -> Self {
+impl From<Percent> for f32 {
+    fn from(value: Percent) -> Self {
         value.0
     }
 }
 
-impl From<FrameScale> for f64 {
-    fn from(value: FrameScale) -> Self {
+impl From<Percent> for f64 {
+    fn from(value: Percent) -> Self {
         value.0.into()
     }
 }
