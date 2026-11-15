@@ -6,6 +6,7 @@ use crate::{
             overlay::FeaturePointOverlayMiddleware,
         },
         grayscale::GrayscaleMiddleware,
+        optical_flow::motion_matches::MotionMatchesMiddleware,
         resize::ResizeMiddleware,
     },
 };
@@ -13,8 +14,8 @@ use crate::{
 pub mod chain;
 pub mod feature_detection;
 pub mod grayscale;
+pub mod optical_flow;
 pub mod resize;
-// pub mod warp;
 
 /// Process a frame - returns modified frame or error
 pub type ProcessResult = Result<Frame, Box<dyn std::error::Error + Send + Sync>>;
@@ -57,11 +58,7 @@ pub enum MiddlewareDisplatch {
     FeaturePointOverlay(FeaturePointOverlayMiddleware),
     Grayscale(GrayscaleMiddleware),
     Resize(ResizeMiddleware),
-    // Warp(warp::WarpMiddleware),
-    // Ema(EmaMiddleware),
-    // FeaturePoints(FeaturePointsMiddleware),
-    // OpenCVFeatures(FeatureDetectionMiddleware),
-    // Stabilization(StabilizationMiddleware),
+    MotionMatches(MotionMatchesMiddleware),
 }
 
 impl Middleware for MiddlewareDisplatch {
@@ -73,11 +70,7 @@ impl Middleware for MiddlewareDisplatch {
             Self::FeaturePointOverlay(v) => v.name(),
             Self::Grayscale(v) => v.name(),
             Self::Resize(v) => v.name(),
-            // Self::Warp(v) => v.name(),
-            // MiddlewareDisplatch::Ema(v) => v.name(),
-            // MiddlewareDisplatch::FeaturePoints(v) => v.name(),
-            // MiddlewareDisplatch::OpenCVFeatures(v) => v.name(),
-            // MiddlewareDisplatch::Stabilization(v) => v.name(),
+            Self::MotionMatches(v) => v.name(),
         }
     }
 
@@ -89,11 +82,7 @@ impl Middleware for MiddlewareDisplatch {
             Self::FeaturePointOverlay(v) => v.process_async(frame).await,
             Self::Grayscale(v) => v.process_async(frame).await,
             Self::Resize(v) => v.process_async(frame).await,
-            // Self::Warp(v) => v.process_async(frame).await,
-            // MiddlewareDisplatch::Ema(v) => v.process_async(frame).await,
-            // MiddlewareDisplatch::FeaturePoints(v) => v.process_async(frame).await,
-            // MiddlewareDisplatch::OpenCVFeatures(v) => v.process_async(frame).await,
-            // MiddlewareDisplatch::Stabilization(v) => v.process_async(frame).await,
+            Self::MotionMatches(v) => v.process_async(frame).await,
         }
     }
 }

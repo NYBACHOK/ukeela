@@ -4,6 +4,7 @@ use anyhow::Context;
 use fast_image_resize::{ResizeAlg, ResizeOptions, Resizer};
 
 use crate::{
+    POISONED_LOCK_MSG,
     frame::{Frame, FrameData},
     middleware::{Middleware, ProcessResult},
     types::frame_scale::FrameScale,
@@ -53,7 +54,7 @@ impl ResizeMiddleware {
                     let mut dst_image = FrameData::new(dst_width, dst_height);
                     resizer
                         .lock()
-                        .expect("poisoned lock")
+                        .expect(POISONED_LOCK_MSG)
                         .resize(src_image.as_ref(), &mut dst_image, &options)
                         .context("image resizing")?;
                     Result::<_, anyhow::Error>::Ok(dst_image)

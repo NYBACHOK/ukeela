@@ -1,5 +1,5 @@
 use image::Pixel;
-use purecv::core::{KeyPoint, Matrix};
+use purecv::core::{KeyPoint, Matrix, Point};
 use std::{
     collections::BTreeMap,
     str::FromStr,
@@ -77,7 +77,11 @@ pub struct FrameMetadata {
 }
 
 /// A matched feature's coordinates in consecutive, feature-scaled frames.
-pub type MotionMatch = ((f32, f32), (f32, f32));
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MotionMatch {
+    pub previous: Point<f32>,
+    pub current: Point<f32>,
+}
 
 impl Frame {
     pub fn new(data: FrameData, width: usize, height: usize, format: VideoFormat) -> Self {

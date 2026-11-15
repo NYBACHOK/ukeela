@@ -8,13 +8,17 @@ use crate::{
 #[derive(Debug)]
 pub struct FastFeatureDetectionMiddleware {
     detector: FastFeatureDetector,
+    max_features: usize,
 }
 
 impl FastFeatureDetectionMiddleware {
     pub fn new(config: FeatureDetectionConfig) -> Self {
         let detector = FastFeatureDetector::new(config.fast_threshold, true, FastType::Type9_16);
 
-        Self { detector }
+        Self {
+            detector,
+            max_features: config.num_features.get(),
+        }
     }
 
     async fn process_frame(&self, mut frame: Frame) -> anyhow::Result<Frame> {
@@ -25,6 +29,7 @@ impl FastFeatureDetectionMiddleware {
         let mut frame = tokio::runtime::Handle::current()
             .spawn_blocking({
                 let detector = self.detector.clone();
+                let max_features = self.max_features;
 
                 move || {
                     let grayscale = frame
@@ -33,7 +38,15 @@ impl FastFeatureDetectionMiddleware {
                         .as_ref()
                         .expect("we checked that it some");
 
-                    let points = detector.detect(grayscale)?;
+                    let mut points = detector.detect(grayscale)?;
+
+                    points.sort_by(|a, b| {
+                        b.response
+                            .partial_cmp(&a.response)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    });
+
+                    points.truncate(max_features);
 
                     frame.metadata.feature_points = points;
 

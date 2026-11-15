@@ -9,6 +9,7 @@ use crate::{
             orb::OrbFeatureDetectionMiddleware, overlay::FeaturePointOverlayMiddleware,
         },
         grayscale::GrayscaleMiddleware,
+        optical_flow::motion_matches::MotionMatchesMiddleware,
         resize::ResizeMiddleware,
     },
     pipeline::{
@@ -21,6 +22,8 @@ use crate::{
 pub mod frame;
 pub mod middleware;
 pub mod pipeline;
+
+pub const POISONED_LOCK_MSG: &str = "poisoned lock";
 
 pub const DEFAULT_CHANELLS_SIZE: usize = 32;
 
@@ -186,6 +189,10 @@ fn build_processing_chain(
             FeaturePointOverlayMiddleware::new(),
         ));
     }
+
+    chain = chain.add_middleware(middleware::MiddlewareDisplatch::MotionMatches(
+        MotionMatchesMiddleware::default(),
+    ));
 
     Ok(chain)
 }
