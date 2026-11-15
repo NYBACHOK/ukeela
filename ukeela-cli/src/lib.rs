@@ -9,8 +9,9 @@ use crate::{
             orb::OrbFeatureDetectionMiddleware, overlay::FeaturePointOverlayMiddleware,
         },
         grayscale::GrayscaleMiddleware,
-        optical_flow::{
-            motion_matches::MotionMatchesMiddleware, overlay::MotionMatchesOverlayMiddleware,
+        motion::{
+            DEFAULT_MIN_MATCHES, estimation::MotionEstimationMiddleware,
+            matches::MotionMatchesMiddleware, overlay::MotionMatchesOverlayMiddleware,
         },
         resize::ResizeMiddleware,
     },
@@ -196,9 +197,13 @@ fn build_processing_chain(
         ));
     }
 
-    chain = chain.add_middleware(middleware::MiddlewareDisplatch::MotionMatches(
-        MotionMatchesMiddleware::default(),
-    ));
+    chain = chain
+        .add_middleware(middleware::MiddlewareDisplatch::MotionMatches(
+            MotionMatchesMiddleware::new(DEFAULT_MIN_MATCHES),
+        ))
+        .add_middleware(middleware::MiddlewareDisplatch::MotionEstimation(
+            MotionEstimationMiddleware::new(DEFAULT_MIN_MATCHES),
+        ));
 
     if debug_motion_vectors {
         chain = chain.add_middleware(middleware::MiddlewareDisplatch::MotionMatchesOverlay(

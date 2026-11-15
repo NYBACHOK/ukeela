@@ -6,8 +6,9 @@ use crate::{
             overlay::FeaturePointOverlayMiddleware,
         },
         grayscale::GrayscaleMiddleware,
-        optical_flow::{
-            motion_matches::MotionMatchesMiddleware, overlay::MotionMatchesOverlayMiddleware,
+        motion::{
+            estimation::MotionEstimationMiddleware, matches::MotionMatchesMiddleware,
+            overlay::MotionMatchesOverlayMiddleware,
         },
         resize::ResizeMiddleware,
     },
@@ -16,7 +17,7 @@ use crate::{
 pub mod chain;
 pub mod feature_detection;
 pub mod grayscale;
-pub mod optical_flow;
+pub mod motion;
 pub mod resize;
 
 /// Process a frame - returns modified frame or error
@@ -62,6 +63,7 @@ pub enum MiddlewareDisplatch {
     Resize(ResizeMiddleware),
     MotionMatches(MotionMatchesMiddleware),
     MotionMatchesOverlay(MotionMatchesOverlayMiddleware),
+    MotionEstimation(MotionEstimationMiddleware),
 }
 
 impl Middleware for MiddlewareDisplatch {
@@ -75,6 +77,7 @@ impl Middleware for MiddlewareDisplatch {
             Self::Resize(v) => v.name(),
             Self::MotionMatches(v) => v.name(),
             Self::MotionMatchesOverlay(v) => v.name(),
+            Self::MotionEstimation(v) => v.name(),
         }
     }
 
@@ -88,6 +91,7 @@ impl Middleware for MiddlewareDisplatch {
             Self::Resize(v) => v.process_async(frame).await,
             Self::MotionMatches(v) => v.process_async(frame).await,
             Self::MotionMatchesOverlay(v) => v.process_async(frame).await,
+            Self::MotionEstimation(v) => v.process_async(frame).await,
         }
     }
 }

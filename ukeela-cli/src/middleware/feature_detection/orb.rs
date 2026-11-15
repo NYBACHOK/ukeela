@@ -25,7 +25,7 @@ impl OrbFeatureDetectionMiddleware {
             return Err(anyhow::anyhow!("frame metadata don't contains grayscale"));
         }
 
-        let mut frame = tokio::runtime::Handle::current()
+        let frame = tokio::runtime::Handle::current()
             .spawn_blocking({
                 let detector = self.detector.clone();
 
@@ -44,9 +44,6 @@ impl OrbFeatureDetectionMiddleware {
                 }
             })
             .await??;
-
-        frame.metadata.motion_vectors = Vec::new();
-        frame.metadata.motion_matches = Vec::new();
 
         Ok(frame)
     }

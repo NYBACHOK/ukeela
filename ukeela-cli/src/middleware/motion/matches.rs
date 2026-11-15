@@ -11,8 +11,6 @@ use crate::{
     middleware::{Middleware, ProcessResult},
 };
 
-pub const DEFAULT_MIN_MATCHES: usize = 10;
-
 #[derive(Debug, Clone)]
 pub struct MotionMatchesMiddleware {
     min_matches: usize,
@@ -23,15 +21,6 @@ pub struct MotionMatchesMiddleware {
 struct State {
     previous_gray: Option<Arc<Matrix<u8>>>,
     previous_points: Vec<Point2f>,
-}
-
-impl Default for MotionMatchesMiddleware {
-    fn default() -> Self {
-        Self {
-            min_matches: DEFAULT_MIN_MATCHES,
-            state: Default::default(),
-        }
-    }
 }
 
 impl MotionMatchesMiddleware {
@@ -124,7 +113,7 @@ impl MotionMatchesMiddleware {
 
 impl Middleware for MotionMatchesMiddleware {
     fn name(&self) -> &'static str {
-        "optical_flow"
+        "motion_matches"
     }
 
     async fn process_async(&self, frame: crate::frame::Frame) -> ProcessResult {

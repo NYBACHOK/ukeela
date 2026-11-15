@@ -66,13 +66,11 @@ pub struct FrameMetadata {
     pub order: Option<u64>,
     /// Monotonic time when the frame entered the pipeline.
     pub arrival_time: Option<Instant>,
-    /// Per-feature displacements in feature-scaled pixel coordinates.
-    pub motion_vectors: Vec<(i16, i16)>,
     /// Previous/current feature locations in feature-scaled pixel coordinates.
     pub motion_matches: Vec<MotionMatch>,
     /// Detected feature locations in feature-scaled pixel coordinates.
     pub feature_points: Vec<KeyPoint>,
-    pub estimated_transform: Option<[f32; 6]>,
+    pub similarity_transform: Option<SimilarityTransform>,
     pub processing_time: BTreeMap<&'static str, Duration>, // Track time per middleware
 }
 
@@ -81,6 +79,14 @@ pub struct FrameMetadata {
 pub struct MotionMatch {
     pub previous: Point<f32>,
     pub current: Point<f32>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SimilarityTransform {
+    pub a: f64,
+    pub b: f64,
+    pub tx: f64,
+    pub ty: f64,
 }
 
 impl Frame {
