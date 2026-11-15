@@ -79,16 +79,18 @@ pub struct ProcessingChainFlags {
     pub filter_type: FilterType,
     /// Show found features on image
     #[arg(long, global = true, default_value_t = false, required = false)]
-    pub debug_features: bool,
+    pub display_features: bool,
     /// Show optical-flow motion vectors on the image
     #[arg(long, global = true, default_value_t = false, required = false)]
-    pub debug_motion_vectors: bool,
+    pub display_motion_vectors: bool,
     #[arg(long, global = true, default_value_t = NonZero::new(100).unwrap(), required = false)]
     pub num_features: NonZero<usize>,
     #[arg(long, global = true, default_value_t = 50, required = false)]
     pub distance_to_border: u32,
     #[arg(long, global = true, default_value_t = 30, required = false)]
     pub fast_threshold: u8,
+    #[arg(long, global = true, default_value_t = DEFAULT_MIN_MATCHES, required = false)]
+    pub motion_min_matches: usize,
 }
 
 pub async fn run(
@@ -155,11 +157,12 @@ fn build_processing_chain(
         scale,
         features_method,
         filter_type,
-        debug_features,
-        debug_motion_vectors,
+        display_features,
+        display_motion_vectors,
         num_features,
         distance_to_border,
         fast_threshold,
+        motion_min_matches,
     }: ProcessingChainFlags,
 ) -> Result<ProcessingChain, anyhow::Error> {
     let feature_frame_scale = FrameScale::try_new(f32::from(scale) / 100.0)
@@ -191,7 +194,7 @@ fn build_processing_chain(
         }
     });
 
-    if debug_features {
+    if display_features {
         chain = chain.add_middleware(middleware::MiddlewareDisplatch::FeaturePointOverlay(
             FeaturePointOverlayMiddleware::new(),
         ));
@@ -199,13 +202,13 @@ fn build_processing_chain(
 
     chain = chain
         .add_middleware(middleware::MiddlewareDisplatch::MotionMatches(
-            MotionMatchesMiddleware::new(DEFAULT_MIN_MATCHES),
+            MotionMatchesMiddleware::new(motion_min_matches),
         ))
         .add_middleware(middleware::MiddlewareDisplatch::MotionEstimation(
-            MotionEstimationMiddleware::new(DEFAULT_MIN_MATCHES),
+            MotionEstimationMiddleware::new(motion_min_matches),
         ));
 
-    if debug_motion_vectors {
+    if display_motion_vectors {
         chain = chain.add_middleware(middleware::MiddlewareDisplatch::MotionMatchesOverlay(
             MotionMatchesOverlayMiddleware::new(),
         ));
