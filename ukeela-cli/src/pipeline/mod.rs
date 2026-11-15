@@ -9,7 +9,7 @@ use tokio::sync::{broadcast, mpsc::channel, watch};
 use crate::{
     DEFAULT_CHANELLS_SIZE,
     frame::Frame,
-    middleware::chain::ProcessingChain,
+    middleware::queue::ProcessingQueue,
     pipeline::{input::InputHandle, output::OutputHandle},
 };
 
@@ -25,7 +25,7 @@ impl FramePipeline {
     /// Create a pipeline with a bounded output queue and paced latest-frame ingress.
     #[must_use]
     pub fn new(
-        processing_chain: ProcessingChain,
+        processing_chain: ProcessingQueue,
     ) -> (
         Self,
         InputHandle,
@@ -146,7 +146,7 @@ pub struct PipelineStats {
 
 async fn process_frame(
     frame: Frame,
-    chain: &ProcessingChain,
+    chain: &ProcessingQueue,
     stats: &mut PipelineStats,
 ) -> Option<Frame> {
     let mut frame = chain.process(frame).await.ok()?;

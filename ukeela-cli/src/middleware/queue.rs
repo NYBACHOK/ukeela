@@ -4,11 +4,11 @@ use crate::{
 };
 
 #[derive(Debug, Default)]
-pub struct ProcessingChain {
+pub struct ProcessingQueue {
     middlewares: Vec<MiddlewareDisplatch>,
 }
 
-impl ProcessingChain {
+impl ProcessingQueue {
     #[must_use]
     pub fn new() -> Self {
         Self {

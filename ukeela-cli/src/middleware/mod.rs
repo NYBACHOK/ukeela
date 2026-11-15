@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-pub mod chain;
+pub mod queue;
 pub mod feature_detection;
 pub mod grayscale;
 pub mod motion;

@@ -3,7 +3,7 @@ use std::num::NonZero;
 
 use crate::{
     middleware::{
-        chain::ProcessingChain,
+        queue::ProcessingQueue,
         feature_detection::{
             FeatureDetectionConfig, fast::FastFeatureDetectionMiddleware,
             orb::OrbFeatureDetectionMiddleware, overlay::FeaturePointOverlayMiddleware,
@@ -177,7 +177,7 @@ fn build_processing_chain(
         fast_threshold,
         motion_min_matches,
     }: ProcessingChainFlags,
-) -> Result<ProcessingChain, anyhow::Error> {
+) -> Result<ProcessingQueue, anyhow::Error> {
     let feature_frame_scale =
         Percent::try_new(f32::from(scale) / 100.0).ok_or(anyhow::anyhow!("invalid frame scale"))?;
     let stabilization_crop =
@@ -185,7 +185,7 @@ fn build_processing_chain(
     let stabilization_smoothing = Percent::try_new(f32::from(smoothing_factor) / 100.0)
         .ok_or(anyhow::anyhow!("invalid stabilization smoothing factor"))?;
 
-    let mut chain = ProcessingChain::new()
+    let mut chain = ProcessingQueue::new()
         .add_middleware(middleware::MiddlewareDisplatch::Resize(
             ResizeMiddleware::new(
                 feature_frame_scale,
