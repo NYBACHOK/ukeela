@@ -32,17 +32,14 @@ impl GstInputReader {
      jpegdec ! videoconvert ! video/x-raw,format=RGBA ! appsink name=sink sync=false emit-signals=true"
                 )
             }
-            GstInputConfig::Libcamera {
-                output: _,
-                fps,
-            } => format!(
+            GstInputConfig::Libcamera { output: _, fps } => format!(
                 "libcamerasrc ae-metering-mode=spot ! \
                  video/x-raw,format=RGBA,framerate={fps}/1 ! \
                  appsink name=sink max-buffers=1 drop=true"
             ),
             GstInputConfig::File { path, output: _ } => {
                 // uridecodebin automatically handles demuxing & decoding any video format
-                let absolute_path = std::fs::canonicalize(&path).unwrap_or_else(|_| path);
+                let absolute_path = std::fs::canonicalize(&path).unwrap_or(path);
                 let uri = format!("file://{}", absolute_path.to_string_lossy());
 
                 format!(

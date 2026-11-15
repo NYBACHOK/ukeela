@@ -48,6 +48,7 @@ impl FromStr for VideoFormat {
 }
 
 impl VideoFormat {
+    #[must_use]
     pub fn channels(self) -> usize {
         match self {
             VideoFormat::BGR => 3,

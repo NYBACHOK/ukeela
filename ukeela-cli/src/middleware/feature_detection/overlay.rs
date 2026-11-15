@@ -13,6 +13,7 @@ const GREEN_PIXEL: Rgba<u8> = image::Rgba([0, 255, 0, 255]);
 pub struct FeaturePointOverlayMiddleware {}
 
 impl FeaturePointOverlayMiddleware {
+    #[must_use]
     pub fn new() -> Self {
         Self {}
     }
@@ -74,6 +75,12 @@ impl FeaturePointOverlayMiddleware {
         }
 
         Ok(frame)
+    }
+}
+
+impl Default for FeaturePointOverlayMiddleware {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

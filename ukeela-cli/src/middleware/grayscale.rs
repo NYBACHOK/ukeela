@@ -14,6 +14,7 @@ use crate::{
 pub struct GrayscaleMiddleware {}
 
 impl GrayscaleMiddleware {
+    #[must_use]
     pub fn new() -> Self {
         Self {}
     }
@@ -46,6 +47,12 @@ impl GrayscaleMiddleware {
         frame.metadata.grayscale = Some(Arc::new(grayscale));
 
         Ok(frame)
+    }
+}
+
+impl Default for GrayscaleMiddleware {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

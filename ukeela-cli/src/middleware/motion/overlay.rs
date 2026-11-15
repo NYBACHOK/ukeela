@@ -12,6 +12,7 @@ const RED_PIXEL: Rgba<u8> = image::Rgba([255, 0, 0, 255]);
 pub struct MotionMatchesOverlayMiddleware {}
 
 impl MotionMatchesOverlayMiddleware {
+    #[must_use]
     pub fn new() -> Self {
         Self {}
     }
@@ -52,6 +53,12 @@ impl MotionMatchesOverlayMiddleware {
         }
 
         Ok(frame)
+    }
+}
+
+impl Default for MotionMatchesOverlayMiddleware {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

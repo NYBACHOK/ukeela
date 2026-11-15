@@ -12,6 +12,7 @@ pub struct FastFeatureDetectionMiddleware {
 }
 
 impl FastFeatureDetectionMiddleware {
+    #[must_use]
     pub fn new(config: FeatureDetectionConfig) -> Self {
         let detector = FastFeatureDetector::new(config.fast_threshold, true, FastType::Type9_16);
 

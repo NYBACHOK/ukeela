@@ -18,6 +18,7 @@ pub struct ResizeMiddleware {
 }
 
 impl ResizeMiddleware {
+    #[must_use]
     pub fn new(frame_scale: Percent, resize_alg: ResizeAlg) -> Self {
         Self {
             frame_scale,

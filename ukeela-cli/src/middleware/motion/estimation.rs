@@ -22,6 +22,7 @@ struct State {
 }
 
 impl MotionEstimationMiddleware {
+    #[must_use]
     pub fn new(min_matches: usize) -> Self {
         Self {
             min_matches,
@@ -67,7 +68,7 @@ fn estimate_motion(
         .filter(|m| {
             [m.previous.x, m.previous.y, m.current.x, m.current.y]
                 .into_iter()
-                .all(|v| v.is_finite())
+                .all(f32::is_finite)
         })
         .collect();
 

@@ -31,6 +31,7 @@ struct State {
 }
 
 impl StabilizationMiddleware {
+    #[must_use]
     pub fn new(debug: bool, crop_percent: Percent, smoothing_factor: Percent) -> Self {
         Self {
             debug,

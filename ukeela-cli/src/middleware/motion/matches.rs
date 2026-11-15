@@ -24,6 +24,7 @@ struct State {
 }
 
 impl MotionMatchesMiddleware {
+    #[must_use]
     pub fn new(min_matches: usize) -> Self {
         Self {
             min_matches,
@@ -43,7 +44,7 @@ impl MotionMatchesMiddleware {
         let motion_matches = tokio::runtime::Handle::current()
             .spawn_blocking({
                 let state = Arc::clone(&self.state);
-                let current_grayscale = Arc::clone(&current_grayscale);
+                let current_grayscale = Arc::clone(current_grayscale);
                 let feature_points = frame.metadata.feature_points.clone();
                 let min_matches = self.min_matches;
 
@@ -99,7 +100,7 @@ impl MotionMatchesMiddleware {
 
         let mut state = self.state.lock().expect(POISONED_LOCK_MSG);
 
-        state.previous_gray = Some(Arc::clone(&current_grayscale));
+        state.previous_gray = Some(Arc::clone(current_grayscale));
         state.previous_points = frame
             .metadata
             .feature_points

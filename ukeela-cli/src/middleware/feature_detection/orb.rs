@@ -11,6 +11,7 @@ pub struct OrbFeatureDetectionMiddleware {
 }
 
 impl OrbFeatureDetectionMiddleware {
+    #[must_use]
     pub fn new(config: FeatureDetectionConfig) -> Self {
         let mut detector = Orb::default();
         detector.set_nfeatures(config.num_features.get());
