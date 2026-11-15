@@ -51,65 +51,79 @@ impl MotionMatchesMiddleware {
                 move || {
                     let mut state = state.lock().expect(POISONED_LOCK_MSG);
 
-                    let Some(previous_grayscale) = state.previous_gray.as_ref() else {
-                        state.previous_gray = Some(current_grayscale.clone());
-                        state.previous_points = feature_points.iter().map(|this| this.pt).collect();
+                    let motion_matches = match state.previous_gray.as_ref() {
+                        None => Ok(Vec::new()),
+                        Some(_) if state.previous_points.len() < min_matches => Ok(Vec::new()),
+                        Some(previous_grayscale) => {
+                            let previous_points: Vec<_> = state
+                                .previous_points
+                                .iter()
+                                .copied()
+                                .filter(|point| {
+                                    point_is_in_bounds(
+                                        *point,
+                                        previous_grayscale.cols,
+                                        previous_grayscale.rows,
+                                    )
+                                })
+                                .collect();
 
-                        return Ok(Vec::new());
+                            if previous_points.len() < min_matches {
+                                Ok(Vec::new())
+                            } else {
+                                calc_optical_flow_pyramid_lk(
+                                    previous_grayscale,
+                                    &current_grayscale,
+                                    &previous_points,
+                                    None,
+                                    window,
+                                    3,
+                                    TermCriteria::new(TermType::Both, 30, 0.01),
+                                    0,
+                                    1e-4,
+                                )
+                                .map_err(anyhow::Error::from)
+                                .map(|(tracked, status, _)| {
+                                    previous_points
+                                        .iter()
+                                        .zip(tracked.iter())
+                                        .zip(status.iter())
+                                        .filter_map(|((&previous, &current), &status)| {
+                                            (status != 0
+                                                && point_is_in_bounds(
+                                                    current,
+                                                    current_grayscale.cols,
+                                                    current_grayscale.rows,
+                                                ))
+                                            .then_some(MotionMatch { previous, current })
+                                        })
+                                        .collect::<Vec<_>>()
+                                })
+                            }
+                        }
                     };
 
-                    if state.previous_points.len() < min_matches {
-                        return Ok(Vec::new());
-                    }
+                    state.previous_gray = Some(current_grayscale.clone());
+                    state.previous_points = feature_points.iter().map(|this| this.pt).collect();
 
-                    let (tracked, status, _) = calc_optical_flow_pyramid_lk(
-                        previous_grayscale,
-                        &current_grayscale,
-                        &state.previous_points,
-                        None,
-                        window,
-                        3,
-                        TermCriteria::new(TermType::Both, 30, 0.01),
-                        0,
-                        1e-4,
-                    )?;
-
-                    let motion_matches = state
-                        .previous_points
-                        .iter()
-                        .zip(tracked.iter())
-                        .zip(status.iter())
-                        .filter_map(|((&previous, &current), &status)| {
-                            (status != 0
-                                && current.x.is_finite()
-                                && current.y.is_finite()
-                                && current.x >= 0.0
-                                && current.y >= 0.0
-                                && current.x < current_grayscale.cols as f32
-                                && current.y < current_grayscale.rows as f32)
-                                .then_some(MotionMatch { previous, current })
-                        })
-                        .collect::<Vec<_>>();
-
-                    Result::<_, anyhow::Error>::Ok(motion_matches)
+                    motion_matches
                 }
             })
             .await??;
 
         frame.metadata.motion_matches = motion_matches;
 
-        let mut state = self.state.lock().expect(POISONED_LOCK_MSG);
-
-        state.previous_gray = Some(Arc::clone(current_grayscale));
-        state.previous_points = frame
-            .metadata
-            .feature_points
-            .iter()
-            .map(|this| this.pt)
-            .collect();
-
         Ok(frame)
     }
+}
+
+fn point_is_in_bounds(point: Point2f, width: usize, height: usize) -> bool {
+    point.x.is_finite()
+        && point.y.is_finite()
+        && point.x >= 0.0
+        && point.y >= 0.0
+        && point.x < width as f32
+        && point.y < height as f32
 }
 
 impl Middleware for MotionMatchesMiddleware {

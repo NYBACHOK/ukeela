@@ -82,6 +82,7 @@ pub struct MotionMatch {
     pub current: Point<f32>,
 }
 
+/// Similarity transform mapping coordinates from the previous frame to the current frame.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SimilarityTransform {
     pub a: f64,

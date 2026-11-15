@@ -10,12 +10,13 @@ use imageproc::{
 
 use crate::{
     POISONED_LOCK_MSG,
-    frame::{Frame, SimilarityTransform},
+    frame::{Frame, FrameData, SimilarityTransform},
     middleware::{Middleware, ProcessResult},
     types::percent::Percent,
 };
 
 const BLUE_PIXEL: Rgba<u8> = image::Rgba([0, 0, 255, 255]);
+const TRANSFORM_EPSILON: f64 = 1e-12;
 
 #[derive(Debug, Clone)]
 pub struct StabilizationMiddleware {
@@ -27,7 +28,8 @@ pub struct StabilizationMiddleware {
 
 #[derive(Debug, Default)]
 struct State {
-    smoothed_transform: Option<SimilarityTransform>,
+    camera_trajectory: Option<SimilarityTransform>,
+    smoothed_trajectory: Option<SimilarityTransform>,
 }
 
 impl StabilizationMiddleware {
@@ -42,9 +44,12 @@ impl StabilizationMiddleware {
     }
 
     fn process_frame(&self, mut frame: Frame) -> anyhow::Result<Frame> {
-        let transform = match frame.metadata.similarity_transform.as_ref() {
-            Some(v) => v,
-            None => return Ok(frame),
+        let correction = match frame.metadata.similarity_transform.as_ref() {
+            Some(relative) => Some(
+                self.update_trajectory(relative)
+                    .context("could not update stabilization trajectory")?,
+            ),
+            None => None,
         };
 
         let (crop_x, crop_y, crop_width, crop_height) = crop_bounds(
@@ -53,38 +58,32 @@ impl StabilizationMiddleware {
             f32::from(self.crop_percent),
         );
 
-        let transform = self.smooth_transform(transform);
-
-        let projection = Projection::from_matrix([
-            transform.a as f32,
-            -transform.b as f32,
-            transform.tx as f32,
-            transform.b as f32,
-            transform.a as f32,
-            transform.ty as f32,
-            0.0,
-            0.0,
-            1.0,
-        ])
-        .context("estimated stabilization transform is not invertible")?
-        .invert();
-
-        let mut warped = imageproc::geometric_transformations::warp(
-            &frame.data,
-            projection,
-            Interpolation::Bilinear,
-            Border::Constant(Rgba([0, 0, 0, 255])),
-        );
-
         if self.debug {
+            let mut image = match correction {
+                Some(transform) if !is_identity(transform) => warp(&frame.data, transform)?,
+                _ => frame.data.as_ref().clone(),
+            };
             let crop_rect = Rect::at(crop_x as i32, crop_y as i32).of_size(crop_width, crop_height);
-            draw_hollow_rect_mut(&mut warped, crop_rect, BLUE_PIXEL);
-            frame.data = Arc::new(warped);
+            draw_hollow_rect_mut(&mut image, crop_rect, BLUE_PIXEL);
+            frame.data = Arc::new(image);
             return Ok(frame);
         }
 
-        let cropped =
-            image::imageops::crop_imm(&warped, crop_x, crop_y, crop_width, crop_height).to_image();
+        let cropped = match correction {
+            Some(transform) if !is_identity(transform) => {
+                let warped = warp(&frame.data, transform)?;
+                image::imageops::crop_imm(&warped, crop_x, crop_y, crop_width, crop_height)
+                    .to_image()
+            }
+            _ => image::imageops::crop_imm(
+                frame.data.as_ref(),
+                crop_x,
+                crop_y,
+                crop_width,
+                crop_height,
+            )
+            .to_image(),
+        };
 
         frame.width = cropped.width() as usize;
         frame.height = cropped.height() as usize;
@@ -93,22 +92,142 @@ impl StabilizationMiddleware {
         Ok(frame)
     }
 
-    fn smooth_transform(&self, transform: &SimilarityTransform) -> SimilarityTransform {
-        let mut state = self.state.lock().expect(POISONED_LOCK_MSG);
-        let smoothed_transform = state.smoothed_transform.map_or(*transform, |previous| {
-            let current_weight = f64::from(self.smoothing_factor);
-            let previous_weight = 1.0 - current_weight;
-            SimilarityTransform {
-                a: previous.a * previous_weight + transform.a * current_weight,
-                b: previous.b * previous_weight + transform.b * current_weight,
-                tx: previous.tx * previous_weight + transform.tx * current_weight,
-                ty: previous.ty * previous_weight + transform.ty * current_weight,
-            }
-        });
+    fn update_trajectory(
+        &self,
+        relative_motion: &SimilarityTransform,
+    ) -> Option<SimilarityTransform> {
+        if !is_valid_transform(*relative_motion) {
+            return None;
+        }
 
-        state.smoothed_transform = Some(smoothed_transform);
-        smoothed_transform
+        let mut state = self.state.lock().expect(POISONED_LOCK_MSG);
+        let actual = compose(
+            *relative_motion,
+            state.camera_trajectory.unwrap_or_else(identity),
+        );
+        if !is_valid_transform(actual) {
+            return None;
+        }
+
+        let smoothed = match state.smoothed_trajectory {
+            Some(previous) => {
+                interpolate_similarity(previous, actual, f64::from(self.smoothing_factor))?
+            }
+            None => actual,
+        };
+        let correction = compose(smoothed, inverse(actual)?);
+        if !is_valid_transform(correction) {
+            return None;
+        }
+
+        state.camera_trajectory = Some(actual);
+        state.smoothed_trajectory = Some(smoothed);
+        Some(correction)
     }
+}
+
+fn warp(image: &FrameData, transform: SimilarityTransform) -> anyhow::Result<FrameData> {
+    let projection = Projection::from_matrix([
+        transform.a as f32,
+        -transform.b as f32,
+        transform.tx as f32,
+        transform.b as f32,
+        transform.a as f32,
+        transform.ty as f32,
+        0.0,
+        0.0,
+        1.0,
+    ])
+    .context("stabilization correction is not invertible")?;
+
+    Ok(imageproc::geometric_transformations::warp(
+        image,
+        projection,
+        Interpolation::Bilinear,
+        Border::Constant(Rgba([0, 0, 0, 255])),
+    ))
+}
+
+fn identity() -> SimilarityTransform {
+    SimilarityTransform {
+        a: 1.0,
+        b: 0.0,
+        tx: 0.0,
+        ty: 0.0,
+    }
+}
+
+// Returns outer(inner(point)); relative motion therefore composes on the left.
+fn compose(outer: SimilarityTransform, inner: SimilarityTransform) -> SimilarityTransform {
+    SimilarityTransform {
+        a: outer.a * inner.a - outer.b * inner.b,
+        b: outer.b * inner.a + outer.a * inner.b,
+        tx: outer.a * inner.tx - outer.b * inner.ty + outer.tx,
+        ty: outer.b * inner.tx + outer.a * inner.ty + outer.ty,
+    }
+}
+
+fn inverse(transform: SimilarityTransform) -> Option<SimilarityTransform> {
+    let determinant = transform.a * transform.a + transform.b * transform.b;
+    if !determinant.is_finite() || determinant <= TRANSFORM_EPSILON {
+        return None;
+    }
+
+    Some(SimilarityTransform {
+        a: transform.a / determinant,
+        b: -transform.b / determinant,
+        tx: -(transform.a * transform.tx + transform.b * transform.ty) / determinant,
+        ty: (transform.b * transform.tx - transform.a * transform.ty) / determinant,
+    })
+}
+
+fn interpolate_similarity(
+    previous: SimilarityTransform,
+    current: SimilarityTransform,
+    current_weight: f64,
+) -> Option<SimilarityTransform> {
+    if !is_valid_transform(previous) || !is_valid_transform(current) {
+        return None;
+    }
+
+    // Causal smoothing uses past state only, so it adds no lookahead latency.
+    let previous_scale = previous.a.hypot(previous.b);
+    let current_scale = current.a.hypot(current.b);
+    let previous_angle = previous.b.atan2(previous.a);
+    let current_angle = current.b.atan2(current.a);
+    let angle_delta = (current_angle - previous_angle + std::f64::consts::PI)
+        .rem_euclid(std::f64::consts::TAU)
+        - std::f64::consts::PI;
+    let weight = current_weight.clamp(0.0, 1.0);
+    let angle = previous_angle + angle_delta * weight;
+    let scale = (previous_scale.ln() * (1.0 - weight) + current_scale.ln() * weight).exp();
+
+    let transform = SimilarityTransform {
+        a: scale * angle.cos(),
+        b: scale * angle.sin(),
+        tx: previous.tx * (1.0 - weight) + current.tx * weight,
+        ty: previous.ty * (1.0 - weight) + current.ty * weight,
+    };
+
+    is_valid_transform(transform).then_some(transform)
+}
+
+fn is_valid_transform(transform: SimilarityTransform) -> bool {
+    [transform.a, transform.b, transform.tx, transform.ty]
+        .into_iter()
+        .all(f64::is_finite)
+        && [transform.a, transform.b, transform.tx, transform.ty]
+            .into_iter()
+            .map(|value| value as f32)
+            .all(f32::is_finite)
+        && transform.a * transform.a + transform.b * transform.b > TRANSFORM_EPSILON
+}
+
+fn is_identity(transform: SimilarityTransform) -> bool {
+    (transform.a - 1.0).abs() <= TRANSFORM_EPSILON
+        && transform.b.abs() <= TRANSFORM_EPSILON
+        && transform.tx.abs() <= TRANSFORM_EPSILON
+        && transform.ty.abs() <= TRANSFORM_EPSILON
 }
 
 #[inline]

@@ -120,10 +120,14 @@ fn estimate_motion(
         model = fit_similarity_least_squares(&inliers)?;
     }
 
-    [model.a, model.b, model.tx, model.ty]
+    let finite = [model.a, model.b, model.tx, model.ty]
         .into_iter()
-        .all(f64::is_finite)
-        .then_some(model)
+        .all(f64::is_finite);
+    if !finite || model.a * model.a + model.b * model.b <= f64::EPSILON {
+        return None;
+    }
+
+    Some(model)
 }
 
 fn fit_similarity_minimal(m1: MotionMatch, m2: MotionMatch) -> Option<SimilarityTransform> {
