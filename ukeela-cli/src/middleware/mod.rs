@@ -1,4 +1,3 @@
-pub mod stabilization;
 use crate::{
     frame::Frame,
     middleware::{
@@ -16,11 +15,13 @@ use crate::{
     },
 };
 
-pub mod queue;
+pub mod chain;
 pub mod feature_detection;
 pub mod grayscale;
 pub mod motion;
+pub mod queue;
 pub mod resize;
+pub mod stabilization;
 
 /// Process a frame - returns modified frame or error
 pub type ProcessResult = Result<Frame, Box<dyn std::error::Error + Send + Sync>>;
@@ -36,9 +37,7 @@ pub trait Middleware: Send + Sync {
     }
 
     /// Process frame asynchronously (for async pipelines)
-    fn process_async(&self, frame: Frame) -> impl Future<Output = ProcessResult>;
-
-    // fn reset(&self) // TODO: is it make sense?
+    fn process_async(&self, frame: Frame) -> impl Future<Output = ProcessResult> + Send + Sync;
 }
 
 /// No-op middleware for passthrough
