@@ -203,6 +203,8 @@ impl GstOutputWriter {
                 }
             }
 
+            frame_pipeline.shutdown();
+
             let _ = pipeline.set_state(gstreamer::State::Null);
 
             tracing::info!("Closed output gst pipeline");
