@@ -23,25 +23,21 @@ impl GstInputReader {
         let pipeline = match cfg {
             GstInputConfig::Camera {
                 camera_device,
-                width,
-                height,
                 fps,
                 output: _,
             } => {
                 format!(
                     "v4l2src device={camera_device} extra-controls=\"s,auto_exposure=3,exposure_dynamic_framerate=0\" ! \
-     image/jpeg,width={width},height={height},framerate={fps}/1 ! \
+     image/jpeg,framerate={fps}/1 ! \
      jpegdec ! videoconvert ! video/x-raw,format=RGBA ! appsink name=sink sync=false emit-signals=true"
                 )
             }
             GstInputConfig::Libcamera {
                 output: _,
-                width,
-                height,
                 fps,
             } => format!(
                 "libcamerasrc ae-metering-mode=spot ! \
-                 video/x-raw,format=RGBA,width={width},height={height},framerate={fps}/1 ! \
+                 video/x-raw,format=RGBA,framerate={fps}/1 ! \
                  appsink name=sink max-buffers=1 drop=true"
             ),
             GstInputConfig::File { path, output: _ } => {

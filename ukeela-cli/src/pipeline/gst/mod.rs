@@ -10,10 +10,6 @@ pub enum GstInputConfig {
     Camera {
         #[arg(required = true)]
         camera_device: String,
-        #[arg(long, default_value_t = 1920, required = false)]
-        width: u32,
-        #[arg(long, default_value_t = 1080, required = false)]
-        height: u32,
         #[arg(long, default_value_t = 30, required = false)]
         fps: u32,
 
@@ -21,10 +17,6 @@ pub enum GstInputConfig {
         output: GstOutputConfig,
     },
     Libcamera {
-        #[arg(long, default_value_t = 1456, required = false)]
-        width: u32,
-        #[arg(long, default_value_t = 1088, required = false)]
-        height: u32,
         #[arg(long, default_value_t = 30, required = false)]
         fps: u32,
 
@@ -63,17 +55,8 @@ impl GstInputConfig {
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum GstOutputConfig {
     FakeSink,
-    Display {
-        #[arg(long, default_value_t = 1920, required = false)]
-        width: u32,
-        #[arg(long, default_value_t = 1080, required = false)]
-        height: u32,
-    },
+    Display {},
     File {
-        #[arg(long, default_value_t = 1920, required = false)]
-        width: u32,
-        #[arg(long, default_value_t = 1080, required = false)]
-        height: u32,
         #[arg(long, default_value_t = 30, required = false)]
         fps: u32,
         #[arg(required = true)]

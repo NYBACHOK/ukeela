@@ -80,7 +80,7 @@ pub struct ProcessingChainFlags {
     /// Weight of the latest motion estimate in smoothing (percent; higher is more responsive)
     #[arg(long, global = true, default_value_t = 50, value_parser = clap::value_parser!(u8).range(1..101), required = false)]
     pub smoothing_factor: u8,
-    /// Draw the stabilization crop boundary without warping or cropping
+    /// Draw the stabilization crop boundary without cropping
     #[arg(long, global = true, default_value_t = false, required = false)]
     pub display_stabilization: bool,
     #[arg(long,global = true, default_value_t = FeaturePointsMethod::Fast, required = false)]
