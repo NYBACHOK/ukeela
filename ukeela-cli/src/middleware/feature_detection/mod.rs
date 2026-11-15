@@ -2,6 +2,7 @@ use std::num::NonZero;
 
 pub mod fast;
 pub mod orb;
+pub mod overlay;
 
 #[derive(Debug, Clone, Copy)]
 pub struct FeatureDetectionConfig {

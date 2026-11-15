@@ -3,6 +3,7 @@ use crate::{
     middleware::{
         feature_detection::{
             fast::FastFeatureDetectionMiddleware, orb::OrbFeatureDetectionMiddleware,
+            overlay::FeaturePointOverlayMiddleware,
         },
         grayscale::GrayscaleMiddleware,
         resize::ResizeMiddleware,
@@ -11,7 +12,6 @@ use crate::{
 
 pub mod chain;
 pub mod feature_detection;
-pub mod feature_point_overlay;
 pub mod grayscale;
 pub mod resize;
 // pub mod warp;
@@ -54,7 +54,7 @@ pub enum MiddlewareDisplatch {
     NoOp(NoOpMiddleware),
     Fast(FastFeatureDetectionMiddleware),
     Orb(OrbFeatureDetectionMiddleware),
-    FeaturePointOverlay(feature_point_overlay::FeaturePointOverlayMiddleware),
+    FeaturePointOverlay(FeaturePointOverlayMiddleware),
     Grayscale(GrayscaleMiddleware),
     Resize(ResizeMiddleware),
     // Warp(warp::WarpMiddleware),

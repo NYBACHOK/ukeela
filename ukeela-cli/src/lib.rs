@@ -6,7 +6,7 @@ use crate::{
         chain::ProcessingChain,
         feature_detection::{
             FeatureDetectionConfig, fast::FastFeatureDetectionMiddleware,
-            orb::OrbFeatureDetectionMiddleware,
+            orb::OrbFeatureDetectionMiddleware, overlay::FeaturePointOverlayMiddleware,
         },
         grayscale::GrayscaleMiddleware,
         resize::ResizeMiddleware,
@@ -183,7 +183,7 @@ fn build_processing_chain(
 
     if debug_features {
         chain = chain.add_middleware(middleware::MiddlewareDisplatch::FeaturePointOverlay(
-            middleware::feature_point_overlay::FeaturePointOverlayMiddleware::new(),
+            FeaturePointOverlayMiddleware::new(),
         ));
     }
 
