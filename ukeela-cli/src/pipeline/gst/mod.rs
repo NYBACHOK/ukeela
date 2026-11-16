@@ -19,7 +19,10 @@ pub enum GstInputConfig {
     Libcamera {
         #[arg(long, default_value_t = 30, required = false)]
         fps: u32,
-
+        #[arg(long, default_value_t = 1456, required = false)]
+        width: u32,
+        #[arg(long, default_value_t = 1088, required = false)]
+        height: u32,
         #[command(subcommand)]
         output: GstOutputConfig,
     },

@@ -32,10 +32,17 @@ impl GstInputReader {
      jpegdec ! videoconvert ! video/x-raw,format=RGBA ! appsink name=sink sync=false emit-signals=true"
                 )
             }
-            GstInputConfig::Libcamera { output: _, fps } => format!(
-                "libcamerasrc ae-metering-mode=spot ! \
-                 video/x-raw,format=RGBA,framerate={fps}/1 ! \
-                 appsink name=sink max-buffers=1 drop=true"
+            GstInputConfig::Libcamera {
+                output: _,
+                width,
+                height,
+                fps,
+            } => format!(
+                "libcamerasrc ae-metering-mode=spot ! video/x-raw,format=NV12,width={},height={},framerate={}/1 ! \
+                queue max-size-buffers=3 max-size-bytes=0 max-size-time=0 leaky=downstream ! videoconvert ! \
+                queue max-size-buffers=3 max-size-bytes=0 max-size-time=0 leaky=downstream ! video/x-raw,format=RGBA ! \
+                appsink name=sink max-buffers=1 drop=true",
+                width, height, fps
             ),
             GstInputConfig::File { path, output: _ } => {
                 // uridecodebin automatically handles demuxing & decoding any video format
