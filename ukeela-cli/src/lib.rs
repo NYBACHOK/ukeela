@@ -10,8 +10,13 @@ use crate::{
         },
         grayscale::GrayscaleMiddleware,
         motion::{
-            DEFAULT_MIN_MATCHES, estimation::MotionEstimationMiddleware,
-            matches::MotionMatchesMiddleware, overlay::MotionMatchesOverlayMiddleware,
+            DEFAULT_MIN_MATCHES,
+            estimation::MotionEstimationMiddleware,
+            matches::MotionMatchesMiddleware,
+            optical_flow_lk::{
+                OpticalFlowLkFeatureDetectionMiddleware, OpticalFlowLkMatchesMiddleware,
+            },
+            overlay::MotionMatchesOverlayMiddleware,
         },
         queue::ProcessingQueue,
         resize::ResizeMiddleware,
@@ -103,6 +108,9 @@ pub struct ProcessingFlags {
     /// Show optical-flow motion vectors on the image
     #[arg(long, global = true, default_value_t = false, required = false)]
     pub display_motion_vectors: bool,
+    /// Use optical-flow-lk Shi-Tomasi detection and Lucas-Kanade tracking (ignores --features-method)
+    #[arg(long, global = true, default_value_t = false, required = false)]
+    pub optical_flow_lk: bool,
     #[arg(long, global = true, default_value_t = NonZero::new(100).unwrap(), required = false)]
     pub num_features: NonZero<usize>,
     #[arg(long, global = true, default_value_t = 50, required = false)]
@@ -198,6 +206,7 @@ fn build_processing_chain(
         filter_type,
         display_features,
         display_motion_vectors,
+        optical_flow_lk,
         num_features,
         distance_to_border,
         fast_threshold,
@@ -225,12 +234,18 @@ fn build_processing_chain(
         fast_threshold,
     };
 
-    middlewares.push(match features_method {
-        FeaturePointsMethod::Fast => {
-            middleware::MiddlewareDisplatch::Fast(FastFeatureDetectionMiddleware::new(config))
-        }
-        FeaturePointsMethod::Orb => {
-            middleware::MiddlewareDisplatch::Orb(OrbFeatureDetectionMiddleware::new(config))
+    middlewares.push(if optical_flow_lk {
+        middleware::MiddlewareDisplatch::OpticalFlowLkFeatureDetection(
+            OpticalFlowLkFeatureDetectionMiddleware::new(config),
+        )
+    } else {
+        match features_method {
+            FeaturePointsMethod::Fast => {
+                middleware::MiddlewareDisplatch::Fast(FastFeatureDetectionMiddleware::new(config))
+            }
+            FeaturePointsMethod::Orb => {
+                middleware::MiddlewareDisplatch::Orb(OrbFeatureDetectionMiddleware::new(config))
+            }
         }
     });
 
@@ -240,14 +255,19 @@ fn build_processing_chain(
         ));
     }
 
-    middlewares.extend([
+    middlewares.push(if optical_flow_lk {
+        middleware::MiddlewareDisplatch::OpticalFlowLkMatches(OpticalFlowLkMatchesMiddleware::new(
+            motion_min_matches,
+        ))
+    } else {
         middleware::MiddlewareDisplatch::MotionMatches(MotionMatchesMiddleware::new(
             motion_min_matches,
-        )),
-        middleware::MiddlewareDisplatch::MotionEstimation(MotionEstimationMiddleware::new(
-            motion_min_matches,
-        )),
-    ]);
+        ))
+    });
+
+    middlewares.push(middleware::MiddlewareDisplatch::MotionEstimation(
+        MotionEstimationMiddleware::new(motion_min_matches),
+    ));
 
     if display_motion_vectors {
         middlewares.push(middleware::MiddlewareDisplatch::MotionMatchesOverlay(
@@ -264,4 +284,52 @@ fn build_processing_chain(
     ));
 
     Ok(middlewares)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::middleware::Middleware;
+
+    fn flags(optical_flow_lk: bool) -> ProcessingFlags {
+        ProcessingFlags {
+            scale: 25,
+            crop: 5,
+            smoothing_factor: 50,
+            display_stabilization: false,
+            features_method: FeaturePointsMethod::Fast,
+            filter_type: FilterType::Bilinear,
+            display_features: false,
+            display_motion_vectors: false,
+            optical_flow_lk,
+            num_features: NonZero::new(100).expect("positive feature count"),
+            distance_to_border: 50,
+            fast_threshold: 30,
+            motion_min_matches: DEFAULT_MIN_MATCHES,
+        }
+    }
+
+    #[test]
+    fn optical_flow_lk_flag_selects_matching_detection_and_tracking_middleware() {
+        let standard_names: Vec<_> = build_processing_chain(flags(false))
+            .expect("standard pipeline is valid")
+            .iter()
+            .map(Middleware::name)
+            .collect();
+        assert!(standard_names.contains(&"fast_feature_detection"));
+        assert!(standard_names.contains(&"motion_matches"));
+        assert!(!standard_names.contains(&"optical_flow_lk_feature_detection"));
+        assert!(!standard_names.contains(&"optical_flow_lk_matches"));
+
+        let optical_flow_names: Vec<_> = build_processing_chain(flags(true))
+            .expect("optical-flow pipeline is valid")
+            .iter()
+            .map(Middleware::name)
+            .collect();
+        assert!(optical_flow_names.contains(&"optical_flow_lk_feature_detection"));
+        assert!(optical_flow_names.contains(&"optical_flow_lk_matches"));
+        assert!(optical_flow_names.contains(&"motion_estimation"));
+        assert!(!optical_flow_names.contains(&"fast_feature_detection"));
+        assert!(!optical_flow_names.contains(&"motion_matches"));
+    }
 }

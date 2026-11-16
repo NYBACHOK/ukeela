@@ -1358,6 +1358,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
+name = "optical-flow-lk"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1d02d8ae60340ba0c14a364bda0dd9ba93f44fbde171cc0a6e233515f1f5297"
+dependencies = [
+ "image",
+]
+
+[[package]]
 name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2291,6 +2300,7 @@ dependencies = [
  "gstreamer-base",
  "image",
  "imageproc",
+ "optical-flow-lk",
  "purecv",
  "rand 0.10.3",
  "serde",
