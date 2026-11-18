@@ -11,7 +11,7 @@ use time::UtcDateTime;
 pub type FrameData = image::ImageBuffer<image::Rgba<u8>, Vec<u8>>;
 
 /// Shared frame buffer to minimize allocations
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Frame {
     pub id: u64,
     pub timestamp: Duration,
@@ -58,7 +58,7 @@ impl VideoFormat {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct FrameMetadata {
     pub grayscale: Option<Arc<Matrix<u8>>>,
     /// Input order before pacing drops or reorders frames.

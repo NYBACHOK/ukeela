@@ -10,6 +10,7 @@ members = [
     "ukeela-middleware/ukeela-middleware-optical-flow-pcv",
     "ukeela-middleware/ukeela-middleware-resize",
     "ukeela-middleware/ukeela-middleware-stabilization",
+    "ukeela-processing-chain",
 ]
 
 [workspace.package]
@@ -51,6 +52,8 @@ tracing-appender = "0.2"
 
 # local
 ukeela-common.path = "ukeela-common"
+ukeela-processing-chain = "ukeela-processing-chain"
+
 ukeela-middleware-grayscale = "ukeela-middleware/ukeela-middleware-grayscale"
 ukeela-middleware-optical-flow-lk = "ukeela-middleware/ukeela-middleware-optical-flow-lk"
 ukeela-middleware-optical-flow-overlay = "ukeela-middleware/ukeela-middleware-optical-flow-overlay"
