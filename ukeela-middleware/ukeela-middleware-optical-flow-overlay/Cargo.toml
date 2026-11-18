@@ -1,0 +1,16 @@
+[package]
+name = "ukeela-middleware-optical-flow-overlay"
+version = "0.1.0"
+license.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+tokio.workspace = true
+anyhow.workspace = true
+image.workspace = true
+ukeela-common.workspace = true
+
+

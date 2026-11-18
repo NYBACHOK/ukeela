@@ -8,43 +8,37 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
-clap = { version = "4.6", features = ["derive"] }
+# CLI
+clap.workspace = true
 
-# bytes = { version = "1.12", features = [ "serde"]}
-time = "0.3"
-rand = "0.10"
-
-derive_more = { version = "2.1", features = ["display"]} 
-# thiserror = "2.0"
-anyhow = "1.0"
-dirs = "7.0"
-futures-util = "0.3"
-# fearless_simd = {version = "1.0", features = ["force_support_fallback"]}
-# fearless_simd_macros = "0.1"
+# Tools
+time.workspace = true
+rand.workspace = true
+derive_more.workspace = true
+anyhow.workspace = true
+dirs.workspace = true
 
 # GStreamer bindings
-gstreamer = "0.25"
-gstreamer-app = "0.25"
-# gstreamer-video = "0.25"
-gstreamer-base = "0.25"
-# opencv = { version = "0.101", features = ["clang-runtime", "calib3d"] }
-# wgpu = "30.0"
-purecv = { version = "0.12", features = ["simd", "parallel"]} # "simd", "parallel"
+gstreamer.workspace = true
+gstreamer-app.workspace = true
+gstreamer-base.workspace = true
 
-tokio = { version = "1.35", features = ["full"] }
-# crossbeam = "0.8"
-serde = { version = "1.0", features = ["derive"] }
+# IO?
+tokio.workspace = true
+serde.workspace = true
+futures-util.workspace = true
 
 # Image processing
-image = { version = "0.25", default-features = false, features = ["rayon"]}
-fast_image_resize = { version = "6.1", features = ["image", "rayon"] }
-imageproc = "0.27"
-optical-flow-lk = "0.6"
+image.workspace = true
+fast_image_resize.workspace = true
+imageproc.workspace = true
+optical-flow-lk.workspace = true
+purecv.workspace = true
 
 # Logging
-tracing = { version = "0.1", features = [] }
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-tracing-appender = "0.2"
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
 
 [[bin]]
 name = "ukeela"
