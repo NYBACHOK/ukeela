@@ -30,3 +30,32 @@ impl Middleware for NoOpMiddleware {
         Ok(frame)
     }
 }
+
+#[macro_export]
+macro_rules! define_middleware_dispatch {
+    (
+        $(#[$meta:meta])*
+        $vis:vis enum $EnumName:ident {
+            $( $variant:ident ($inner:ty) ),+ $(,)?
+        }
+    ) => {
+        $(#[$meta])*
+        $vis enum $EnumName {
+            $( $variant($inner), )+
+        }
+
+        impl Middleware for $EnumName {
+            fn name(&self) -> &'static str {
+                match self {
+                    $( Self::$variant(v) => v.name(), )+
+                }
+            }
+
+            async fn process_async(&self, frame: Frame) -> ProcessResult {
+                match self {
+                    $( Self::$variant(v) => v.process_async(frame).await, )+
+                }
+            }
+        }
+    };
+}
