@@ -1,0 +1,16 @@
+[package]
+name = "ukeela-common"
+version = "0.1.0"
+license.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+time.workspace = true
+
+# Image processing
+image.workspace = true
+purecv.workspace = true

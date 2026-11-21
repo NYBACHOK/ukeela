@@ -1,0 +1,21 @@
+[package]
+name = "ukeela-source-gstreamer"
+version = "0.1.0"
+license.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+gstreamer.workspace = true
+gstreamer-app.workspace = true
+gstreamer-base.workspace = true
+image.workspace = true
+tracing.workspace = true
+futures-util.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+ukeela-common.workspace = true
+ukeela-processing-chain.workspace = true
+ukeela-pipeline.workspace = true

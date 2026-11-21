@@ -1,0 +1,15 @@
+[package]
+name = "ukeela-processing-chain"
+version = "0.1.0"
+license.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+tracing.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+ukeela-common.workspace = true
+

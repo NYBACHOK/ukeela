@@ -1,18 +1,73 @@
 [workspace]
 resolver = "3"
-members = ["ukeela-cli"]
+members = [
+    "ukeela-cli",
+    "ukeela-common",
+    "ukeela-pipeline",
+    "ukeela-processing-chain",
+    "ukeela-middleware/ukeela-middleware-grayscale",
+    "ukeela-middleware/ukeela-middleware-optical-flow-estimation",
+    "ukeela-middleware/ukeela-middleware-optical-flow-lk",
+    "ukeela-middleware/ukeela-middleware-optical-flow-overlay",
+    "ukeela-middleware/ukeela-middleware-optical-flow-pcv",
+    "ukeela-middleware/ukeela-middleware-resize",
+    "ukeela-middleware/ukeela-middleware-stabilization",
+    "ukeela-source/ukeela-source-gstreamer",
+    "ukeela-source/ukeela-source-cam",
+]
 
 [workspace.package]
 license = "MIT"
 edition = "2024"
 
 [workspace.dependencies]
-# anyhow = "1.0"
-# serde = "1.0"
+# CLI
+clap = { version = "4.6", features = ["derive"] }
+derive_more = { version = "2.1", features = ["display"] }
+
+# Tools
+time = "0.3"
+rand = "0.10"
 # thiserror = "2.0"
-# tokio = { version = "1.52" }
-# tracing = { version = "0.1", features = [] }
-# tracing-subscriber = { version = "0.3", features = [] }
+anyhow = "1.0"
+dirs = "7.0"
+futures-util = "0.3"
+
+# GStreamer bindings
+gstreamer = "0.25"
+gstreamer-app = "0.25"
+gstreamer-base = "0.25"
+
+tokio = { version = "1.35", features = ["full"] }
+
+# Image processing
+image = { version = "0.25", default-features = false, features = ["rayon"] }
+fast_image_resize = { version = "6.2", features = ["image", "rayon"] }
+imageproc = "0.27"
+optical-flow-lk = "0.6"
+purecv = { version = "0.12", features = ["simd", "parallel"] }
+
+# Logging
+tracing = { version = "0.1", features = [] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+
+# local
+ukeela-common.path = "ukeela-common"
+ukeela-processing-chain.path = "ukeela-processing-chain"
+ukeela-pipeline.path = "ukeela-pipeline"
+
+# middlewares
+ukeela-middleware-grayscale.path = "ukeela-middleware/ukeela-middleware-grayscale"
+ukeela-middleware-optical-flow-lk.path = "ukeela-middleware/ukeela-middleware-optical-flow-lk"
+ukeela-middleware-optical-flow-overlay.path = "ukeela-middleware/ukeela-middleware-optical-flow-overlay"
+ukeela-middleware-optical-flow-pcv.path = "ukeela-middleware/ukeela-middleware-optical-flow-pcv"
+ukeela-middleware-resize.path = "ukeela-middleware/ukeela-middleware-resize"
+ukeela-middleware-stabilization.path = "ukeela-middleware/ukeela-middleware-stabilization"
+ukeela-middleware-optical-flow-estimation.path = "ukeela-middleware/ukeela-middleware-optical-flow-estimation"
+
+# sources
+ukeela-source-gstreamer.path = "ukeela-source/ukeela-source-gstreamer"
 
 [profile.release]
 opt-level = 3
