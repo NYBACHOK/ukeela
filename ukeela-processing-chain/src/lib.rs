@@ -8,7 +8,7 @@ pub trait ProcessingChain<T: Middleware + Send + Sync + 'static> {
 
     fn push(&mut self, frame: Frame) -> Option<Frame>;
 
-    fn pop(&mut self) -> impl std::future::Future<Output = Option<ProcessResult>>;
+    fn pop(&mut self) -> impl std::future::Future<Output = Option<ProcessResult>> + Send;
 
     fn add_middleware(&mut self, middleware: T);
 }

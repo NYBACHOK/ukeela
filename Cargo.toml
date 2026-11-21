@@ -3,6 +3,8 @@ resolver = "3"
 members = [
     "ukeela-cli",
     "ukeela-common",
+    "ukeela-pipeline",
+    "ukeela-processing-chain",
     "ukeela-middleware/ukeela-middleware-grayscale",
     "ukeela-middleware/ukeela-middleware-optical-flow-estimation",
     "ukeela-middleware/ukeela-middleware-optical-flow-lk",
@@ -10,7 +12,6 @@ members = [
     "ukeela-middleware/ukeela-middleware-optical-flow-pcv",
     "ukeela-middleware/ukeela-middleware-resize",
     "ukeela-middleware/ukeela-middleware-stabilization",
-    "ukeela-processing-chain",
 ]
 
 [workspace.package]
@@ -40,7 +41,7 @@ serde = { version = "1.0", features = ["derive"] }
 
 # Image processing
 image = { version = "0.25", default-features = false, features = ["rayon"] }
-fast_image_resize = { version = "6.1", features = ["image", "rayon"] }
+fast_image_resize = { version = "6.2", features = ["image", "rayon"] }
 imageproc = "0.27"
 optical-flow-lk = "0.6"
 purecv = { version = "0.12", features = ["simd", "parallel"] }
@@ -52,15 +53,16 @@ tracing-appender = "0.2"
 
 # local
 ukeela-common.path = "ukeela-common"
-ukeela-processing-chain = "ukeela-processing-chain"
+ukeela-processing-chain.path = "ukeela-processing-chain"
+ukeela-pipeline.path = "ukeela-pipeline"
 
-ukeela-middleware-grayscale = "ukeela-middleware/ukeela-middleware-grayscale"
-ukeela-middleware-optical-flow-lk = "ukeela-middleware/ukeela-middleware-optical-flow-lk"
-ukeela-middleware-optical-flow-overlay = "ukeela-middleware/ukeela-middleware-optical-flow-overlay"
-ukeela-middleware-optical-flow-pcv = "ukeela-middleware/ukeela-middleware-optical-flow-pcv"
-ukeela-middleware-resize = "ukeela-middleware/ukeela-middleware-resize"
-ukeela-middleware-stabilization = "ukeela-middleware/ukeela-middleware-stabilization"
-ukeela-middleware-optical-flow-estimation = "ukeela-middleware/ukeela-middleware-optical-flow-estimation"
+ukeela-middleware-grayscale.path = "ukeela-middleware/ukeela-middleware-grayscale"
+ukeela-middleware-optical-flow-lk.path = "ukeela-middleware/ukeela-middleware-optical-flow-lk"
+ukeela-middleware-optical-flow-overlay.path = "ukeela-middleware/ukeela-middleware-optical-flow-overlay"
+ukeela-middleware-optical-flow-pcv.path = "ukeela-middleware/ukeela-middleware-optical-flow-pcv"
+ukeela-middleware-resize.path = "ukeela-middleware/ukeela-middleware-resize"
+ukeela-middleware-stabilization.path = "ukeela-middleware/ukeela-middleware-stabilization"
+ukeela-middleware-optical-flow-estimation.path = "ukeela-middleware/ukeela-middleware-optical-flow-estimation"
 
 [profile.release]
 opt-level = 3

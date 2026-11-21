@@ -1,3 +1,4 @@
+use tokio::sync::Notify;
 use ukeela_common::{Frame, Middleware, ProcessResult};
 
 use crate::ProcessingChain;
@@ -6,6 +7,7 @@ use crate::ProcessingChain;
 pub struct SingleProcessingChain<T> {
     middlewares: Vec<T>,
     pending_frame: Option<Frame>,
+    frame_available: Notify,
 }
 
 impl<T: Middleware> SingleProcessingChain<T> {
@@ -20,17 +22,28 @@ impl<T: Middleware + Send + Sync + 'static> ProcessingChain<T> for SingleProcess
         Self {
             middlewares: Vec::new(),
             pending_frame: None,
+            frame_available: Notify::new(),
         }
     }
 
     fn push(&mut self, frame: Frame) -> Option<Frame> {
-        let mut frame = Some(frame);
-        std::mem::swap(&mut self.pending_frame, &mut frame);
-        frame
+        let dropped_frame = self.pending_frame.replace(frame);
+        self.frame_available.notify_one();
+        dropped_frame
     }
 
     async fn pop(&mut self) -> Option<ProcessResult> {
-        let mut frame = self.pending_frame.take()?;
+        let mut frame = loop {
+            let notified = self.frame_available.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+
+            if let Some(frame) = self.pending_frame.take() {
+                break frame;
+            }
+
+            notified.await;
+        };
 
         for mw in &self.middlewares {
             let mw_start = std::time::Instant::now();
@@ -52,6 +65,7 @@ impl<T: Middleware + Send + Sync + 'static> ProcessingChain<T> for SingleProcess
                         middleware = mw.name(),
                         processing_time_ms = elapsed.as_secs_f64() * 1000.0,
                         failed = true,
+                        error = ?error,
                         "Middleware processing failed"
                     );
                     return Some(Err(error));

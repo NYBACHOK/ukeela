@@ -39,15 +39,9 @@ impl<T: Middleware + Send + Sync + 'static> ProcessingChain<T> for MultiProcessi
         let (new_sender, mut receiver) = tokio::sync::mpsc::channel::<ProcessResult>(1);
         std::mem::swap(&mut receiver, &mut self.receiver);
 
-        let mut pending_frame = Option::<Frame>::None;
-
         tokio::spawn({
             async move {
                 loop {
-                    if let Some(frame) = pending_frame.take() {
-                        let _ = new_sender.send(Ok(frame)).await;
-                    }
-
                     let frame = match receiver.recv().await {
                         Some(Ok(v)) => v,
                         Some(Err(_)) => unreachable!("error variant should be dropped in previous"),
@@ -81,8 +75,19 @@ impl<T: Middleware + Send + Sync + 'static> ProcessingChain<T> for MultiProcessi
                         .processing_time
                         .insert(middleware.name(), elapsed);
 
-                    if let Err(TrySendError::Full(frame)) = new_sender.try_send(Ok(frame)) {
-                        pending_frame = Some(frame.expect("we wrapped it into Result"))
+                    match new_sender.try_send(Ok(frame)) {
+                        Ok(()) => {}
+                        Err(TrySendError::Full(Ok(frame))) => {
+                            tracing::warn!(
+                                frame_id = frame.id,
+                                middleware = middleware.name(),
+                                "Dropping frame because the next processing stage is full"
+                            );
+                        }
+                        Err(TrySendError::Full(Err(_))) => {
+                            unreachable!("middleware output is wrapped in Ok")
+                        }
+                        Err(TrySendError::Closed(_)) => break,
                     }
                 }
             }
