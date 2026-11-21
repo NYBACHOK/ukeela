@@ -1840,7 +1840,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
 dependencies = [
  "serde_core",
- "serde_derive",
 ]
 
 [[package]]
@@ -2294,21 +2293,22 @@ dependencies = [
  "derive_more",
  "dirs",
  "fast_image_resize",
- "futures-util",
  "gstreamer",
- "gstreamer-app",
- "gstreamer-base",
- "image",
- "imageproc",
- "optical-flow-lk",
- "purecv",
- "rand 0.10.4",
- "serde",
- "time",
  "tokio",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "ukeela-common",
+ "ukeela-middleware-grayscale",
+ "ukeela-middleware-optical-flow-estimation",
+ "ukeela-middleware-optical-flow-lk",
+ "ukeela-middleware-optical-flow-overlay",
+ "ukeela-middleware-optical-flow-pcv",
+ "ukeela-middleware-resize",
+ "ukeela-middleware-stabilization",
+ "ukeela-pipeline",
+ "ukeela-processing-chain",
+ "ukeela-source-gstreamer",
 ]
 
 [[package]]
@@ -2337,10 +2337,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "image",
- "optical-flow-lk",
  "purecv",
  "rand 0.10.4",
- "tokio",
  "ukeela-common",
 ]
 
@@ -2362,7 +2360,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "image",
- "tokio",
  "ukeela-common",
 ]
 
@@ -2372,7 +2369,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "image",
- "optical-flow-lk",
  "purecv",
  "tokio",
  "ukeela-common",

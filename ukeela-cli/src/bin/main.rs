@@ -1,14 +1,14 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use ukeela_cli::{ProcessingFlags, ProcessingType, pipeline::gst::GstInputConfig, run};
+use ukeela_cli::{CliInputConfig, ProcessingFlags, ProcessingType, run};
 
 #[derive(clap::Parser, Clone)]
 pub struct Args {
     #[command(subcommand)]
-    pub input: GstInputConfig,
+    pub input: CliInputConfig,
 
-    #[arg(long, global = true, default_value_t = ProcessingType::Queue, required = false)]
+    #[arg(long, global = true, default_value_t = ProcessingType::Single, required = false)]
     processing_type: ProcessingType,
 
     /// Display output FPS as a `GStreamer` video overlay.
@@ -55,7 +55,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .enable_all()
         .build()?;
 
-    let output = input.output();
+    let output = input.output().into();
+    let input = input.into();
     runtime.block_on(run(show_fps, input, output, chain_flags, processing_type))?;
 
     Ok(())

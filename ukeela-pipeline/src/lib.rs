@@ -32,7 +32,7 @@ impl FramePipeline {
         C: ProcessingChain<T> + Send + 'static,
     {
         assert!(
-            telemetry_interval.is_zero(),
+            !telemetry_interval.is_zero(),
             "telemetry interval must be greater than zero"
         );
 

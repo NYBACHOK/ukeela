@@ -23,11 +23,11 @@ edition = "2024"
 [workspace.dependencies]
 # CLI
 clap = { version = "4.6", features = ["derive"] }
+derive_more = { version = "2.1", features = ["display"] }
 
 # Tools
 time = "0.3"
 rand = "0.10"
-derive_more = { version = "2.1", features = ["display"] }
 # thiserror = "2.0"
 anyhow = "1.0"
 dirs = "7.0"
@@ -39,7 +39,6 @@ gstreamer-app = "0.25"
 gstreamer-base = "0.25"
 
 tokio = { version = "1.35", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
 
 # Image processing
 image = { version = "0.25", default-features = false, features = ["rayon"] }
@@ -69,7 +68,6 @@ ukeela-middleware-optical-flow-estimation.path = "ukeela-middleware/ukeela-middl
 
 # sources
 ukeela-source-gstreamer.path = "ukeela-source/ukeela-source-gstreamer"
-ukeela-source-cam.path = "ukeela-source/ukeela-source-cam"
 
 [profile.release]
 opt-level = 3

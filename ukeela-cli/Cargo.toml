@@ -8,37 +8,28 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
-# CLI
 clap.workspace = true
-
-# Tools
-time.workspace = true
-rand.workspace = true
 derive_more.workspace = true
 anyhow.workspace = true
 dirs.workspace = true
-
-# GStreamer bindings
 gstreamer.workspace = true
-gstreamer-app.workspace = true
-gstreamer-base.workspace = true
-
-# IO?
 tokio.workspace = true
-serde.workspace = true
-futures-util.workspace = true
-
-# Image processing
-image.workspace = true
 fast_image_resize.workspace = true
-imageproc.workspace = true
-optical-flow-lk.workspace = true
-purecv.workspace = true
-
-# Logging
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tracing-appender.workspace = true
+
+ukeela-common.workspace = true
+ukeela-processing-chain.workspace = true
+ukeela-pipeline.workspace = true
+ukeela-source-gstreamer.workspace = true
+ukeela-middleware-grayscale.workspace = true
+ukeela-middleware-optical-flow-estimation.workspace = true
+ukeela-middleware-optical-flow-lk.workspace = true
+ukeela-middleware-optical-flow-overlay.workspace = true
+ukeela-middleware-optical-flow-pcv.workspace = true
+ukeela-middleware-resize.workspace = true
+ukeela-middleware-stabilization.workspace = true
 
 [[bin]]
 name = "ukeela"

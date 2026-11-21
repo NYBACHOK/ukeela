@@ -44,16 +44,24 @@ macro_rules! define_middleware_dispatch {
             $( $variant($inner), )+
         }
 
-        impl Middleware for $EnumName {
+        impl $crate::Middleware for $EnumName {
             fn name(&self) -> &'static str {
                 match self {
-                    $( Self::$variant(v) => v.name(), )+
+                    $( Self::$variant(v) => <$inner as $crate::Middleware>::name(v), )+
                 }
             }
 
-            async fn process_async(&self, frame: Frame) -> ProcessResult {
+            fn process(&self, frame: $crate::Frame) -> $crate::ProcessResult {
                 match self {
-                    $( Self::$variant(v) => v.process_async(frame).await, )+
+                    $( Self::$variant(v) => <$inner as $crate::Middleware>::process(v, frame), )+
+                }
+            }
+
+            async fn process_async(&self, frame: $crate::Frame) -> $crate::ProcessResult {
+                match self {
+                    $( Self::$variant(v) => {
+                        <$inner as $crate::Middleware>::process_async(v, frame).await
+                    }, )+
                 }
             }
         }

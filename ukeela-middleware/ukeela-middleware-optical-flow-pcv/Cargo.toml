@@ -12,6 +12,5 @@ tokio.workspace = true
 anyhow.workspace = true
 image.workspace = true
 purecv.workspace = true
-optical-flow-lk.workspace = true
 ukeela-common.workspace = true
 

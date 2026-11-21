@@ -1,6 +1,6 @@
 pub mod extensions;
-pub mod types;
 mod frame;
 mod middleware;
+pub mod types;
 
 pub use self::{frame::*, middleware::*};
