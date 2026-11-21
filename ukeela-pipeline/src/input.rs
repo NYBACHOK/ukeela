@@ -47,4 +47,9 @@ impl InputHandle {
 
         Ok(true)
     }
+
+    #[inline]
+    pub fn shutdown_resubscribe(&self) -> broadcast::Receiver<()> {
+        self.shutdown_rx.resubscribe()
+    }
 }

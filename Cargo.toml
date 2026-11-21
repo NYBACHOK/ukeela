@@ -12,6 +12,8 @@ members = [
     "ukeela-middleware/ukeela-middleware-optical-flow-pcv",
     "ukeela-middleware/ukeela-middleware-resize",
     "ukeela-middleware/ukeela-middleware-stabilization",
+    "ukeela-source/ukeela-source-gstreamer",
+    "ukeela-source/ukeela-source-cam",
 ]
 
 [workspace.package]
@@ -56,6 +58,7 @@ ukeela-common.path = "ukeela-common"
 ukeela-processing-chain.path = "ukeela-processing-chain"
 ukeela-pipeline.path = "ukeela-pipeline"
 
+# middlewares
 ukeela-middleware-grayscale.path = "ukeela-middleware/ukeela-middleware-grayscale"
 ukeela-middleware-optical-flow-lk.path = "ukeela-middleware/ukeela-middleware-optical-flow-lk"
 ukeela-middleware-optical-flow-overlay.path = "ukeela-middleware/ukeela-middleware-optical-flow-overlay"
@@ -63,6 +66,10 @@ ukeela-middleware-optical-flow-pcv.path = "ukeela-middleware/ukeela-middleware-o
 ukeela-middleware-resize.path = "ukeela-middleware/ukeela-middleware-resize"
 ukeela-middleware-stabilization.path = "ukeela-middleware/ukeela-middleware-stabilization"
 ukeela-middleware-optical-flow-estimation.path = "ukeela-middleware/ukeela-middleware-optical-flow-estimation"
+
+# sources
+ukeela-source-gstreamer.path = "ukeela-source/ukeela-source-gstreamer"
+ukeela-source-cam.path = "ukeela-source/ukeela-source-cam"
 
 [profile.release]
 opt-level = 3

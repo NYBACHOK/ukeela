@@ -2422,6 +2422,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "ukeela-source-cam"
+version = "0.1.0"
+
+[[package]]
+name = "ukeela-source-gstreamer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures-util",
+ "gstreamer",
+ "gstreamer-app",
+ "gstreamer-base",
+ "image",
+ "tokio",
+ "tracing",
+ "ukeela-common",
+ "ukeela-pipeline",
+ "ukeela-processing-chain",
+]
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
