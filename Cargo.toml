@@ -12,8 +12,7 @@ members = [
     "ukeela-middleware/ukeela-middleware-optical-flow-pcv",
     "ukeela-middleware/ukeela-middleware-resize",
     "ukeela-middleware/ukeela-middleware-stabilization",
-    "ukeela-source/ukeela-source-gstreamer",
-    "ukeela-source/ukeela-source-cam",
+    "ukeela-source/ukeela-source-gstreamer", 
 ]
 
 [workspace.package]
@@ -23,7 +22,6 @@ edition = "2024"
 [workspace.dependencies]
 # CLI
 clap = { version = "4.6", features = ["derive"] }
-derive_more = { version = "2.1", features = ["display"] }
 
 # Tools
 time = "0.3"
@@ -31,14 +29,20 @@ rand = "0.10"
 # thiserror = "2.0"
 anyhow = "1.0"
 dirs = "7.0"
-futures-util = "0.3"
+derive_more = { version = "2.1", features = ["display"] }
 
 # GStreamer bindings
 gstreamer = "0.25"
 gstreamer-app = "0.25"
 gstreamer-base = "0.25"
 
+# io
 tokio = { version = "1.35", features = ["full"] }
+futures-util = "0.3"
+
+# gpu
+gpu-video = "0.5"
+wgpu = "30.0"
 
 # Image processing
 image = { version = "0.25", default-features = false, features = ["rayon"] }

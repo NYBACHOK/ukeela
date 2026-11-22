@@ -17,16 +17,17 @@ impl GrayscaleMiddleware {
 
     fn process_frame(&self, mut frame: Frame) -> anyhow::Result<Frame> {
         let channels = frame.format.channels();
+        let frame_data = frame.frame_data_from_cpu();
 
         // Why cast and clone to purecv instead of image::imageproc?
         // Performance diff. I tested only on laptop, but difference is 2x times faster for this op
         // Ironically, but resizing is on oposite slower for purecv, but its cause `fast_image_resize`
         // do single job, but extremly well
         let color = Matrix::from_vec(
-            frame.data.rows().count(),
+            frame_data.rows().count(),
             frame.width,
             channels,
-            frame.data.to_vec(),
+            frame_data.to_vec(),
         );
 
         let grayscale = match frame.format {

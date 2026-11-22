@@ -12,19 +12,26 @@ impl MotionMatchesOverlayMiddleware {
     }
 
     pub fn process_frame(&self, mut frame: Frame) -> ProcessResult {
-        let matches = &frame.metadata.motion_matches;
-        if matches.is_empty() {
+        if frame.metadata.motion_matches.is_empty() {
             return Ok(frame);
         }
 
-        if Arc::strong_count(&frame.data) > 1 {
-            frame.data = Arc::new((*frame.data).clone());
+        // Unique ownership of the Arc buffer (Clone-on-Write)
+        if Arc::strong_count(frame.frame_data_from_cpu()) > 1 {
+            let inner = (**frame.frame_data_from_cpu()).clone();
+            frame.data = ukeela_common::FrameDataBackend::CPU(Arc::new(inner));
         }
 
-        let image =
-            Arc::get_mut(&mut frame.data).expect("Frame data should be uniquely owned after clone");
+        let image = {
+            let frame_data = match &mut frame.data {
+                ukeela_common::FrameDataBackend::CPU(image_buffer) => image_buffer,
+                ukeela_common::FrameDataBackend::GPU(_) => panic!("cant use GPU based frame"),
+            };
 
-        for motion_match in matches {
+            Arc::get_mut(frame_data).expect("Frame data should be uniquely owned after clone")
+        };
+
+        for motion_match in &frame.metadata.motion_matches {
             let previous = motion_match.previous;
             let current = motion_match.current;
 

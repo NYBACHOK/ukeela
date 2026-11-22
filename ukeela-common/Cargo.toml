@@ -10,6 +10,7 @@ workspace = true
 [dependencies]
 anyhow.workspace = true
 time.workspace = true
+wgpu.workspace = true
 
 # Image processing
 image.workspace = true

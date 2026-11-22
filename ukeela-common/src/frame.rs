@@ -11,17 +11,37 @@ use time::UtcDateTime;
 pub type FrameData = image::ImageBuffer<image::Rgba<u8>, Vec<u8>>;
 
 /// Shared frame buffer to minimize allocations
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Frame {
     pub id: u64,
     pub timestamp: Duration,
     pub width: usize,
     pub height: usize,
     pub format: VideoFormat,
-    /// Actual pixel data - copied only when needed
-    pub data: Arc<FrameData>,
+    pub data: FrameDataBackend,
     /// Metadata passed through pipeline
     pub metadata: FrameMetadata,
+}
+
+impl Default for Frame {
+    fn default() -> Self {
+        Self {
+            id: Default::default(),
+            timestamp: Default::default(),
+            width: Default::default(),
+            height: Default::default(),
+            format: Default::default(),
+            data: FrameDataBackend::CPU(Default::default()),
+            metadata: Default::default(),
+        }
+    }
+}
+
+/// Actual pixel data - copied only when needed
+#[derive(Clone, Debug)]
+pub enum FrameDataBackend {
+    CPU(Arc<FrameData>),
+    GPU(wgpu::Texture),
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -92,7 +112,22 @@ pub struct SimilarityTransform {
 }
 
 impl Frame {
-    pub fn new(data: FrameData, width: usize, height: usize, format: VideoFormat) -> Self {
+    #[inline]
+    pub fn new_cpu(data: FrameData, width: usize, height: usize, format: VideoFormat) -> Self {
+        Self::new(FrameDataBackend::CPU(Arc::new(data)), width, height, format)
+    }
+
+    #[inline]
+    pub fn new_gpu(
+        texture: wgpu::Texture,
+        width: usize,
+        height: usize,
+        format: VideoFormat,
+    ) -> Self {
+        Self::new(FrameDataBackend::GPU(texture), width, height, format)
+    }
+
+    pub fn new(data: FrameDataBackend, width: usize, height: usize, format: VideoFormat) -> Self {
         static FRAME_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
         Self {
@@ -103,18 +138,22 @@ impl Frame {
             width,
             height,
             format,
-            data: Arc::new(data),
+            data,
             metadata: FrameMetadata::default(),
         }
     }
 
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.data.len()
+    pub fn frame_data_from_cpu(&self) -> &Arc<FrameData> {
+        match &self.data {
+            FrameDataBackend::CPU(image_buffer) => image_buffer,
+            FrameDataBackend::GPU(_) => panic!("tried to get cpu data from gpu based frame"),
+        }
     }
 
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
+    pub fn frame_data_from_cpu_mut(&mut self) -> &mut Arc<FrameData> {
+        match &mut self.data {
+            FrameDataBackend::CPU(image_buffer) => image_buffer,
+            FrameDataBackend::GPU(_) => panic!("tried to get cpu data from gpu based frame"),
+        }
     }
 }

@@ -111,7 +111,7 @@ mod tests {
     }
 
     fn frame_with_grayscale(width: usize, height: usize, grayscale: Matrix<u8>) -> Frame {
-        let mut frame = Frame::new(
+        let mut frame = Frame::new_cpu(
             image::RgbaImage::new(width as u32, height as u32),
             width,
             height,

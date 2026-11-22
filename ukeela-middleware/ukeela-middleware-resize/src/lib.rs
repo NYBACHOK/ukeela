@@ -42,17 +42,19 @@ impl ResizeMiddleware {
 
         let options = ResizeOptions::new().resize_alg(self.resize_alg);
 
+        let src_image = &**frame.frame_data_from_cpu();
+
         let resized = {
             let mut dst_image = FrameData::new(dst_width, dst_height);
             self.resizer
                 .acquire_lock()
-                .resize(frame.data.as_ref(), &mut dst_image, &options)
+                .resize(src_image, &mut dst_image, &options)
                 .context("image resizing")?;
 
             dst_image
         };
 
-        frame.data = Arc::new(resized);
+        frame.data = ukeela_common::FrameDataBackend::CPU(Arc::new(resized));
         frame.width = scaled_width;
         frame.height = scaled_height;
 

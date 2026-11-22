@@ -154,7 +154,7 @@ impl GstOutputWriter {
                     overlay.set_property("text", format!("FPS: {fps_val:.1}"));
                 }
 
-                let frame_data = frame.data.as_raw();
+                let frame_data = &**frame.frame_data_from_cpu(); // TODO: implement cloning in egress only to cpu from gpu
 
                 // Convert Frame to GStreamer buffer
                 let mut buffer = gstreamer::Buffer::with_size(frame_data.len())

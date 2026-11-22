@@ -49,42 +49,38 @@ impl StabilizationMiddleware {
             None => None,
         };
 
+        let frame_data = frame.frame_data_from_cpu();
+
         let (crop_x, crop_y, crop_width, crop_height) = crop_bounds(
-            frame.data.width(),
-            frame.data.height(),
+            frame_data.width(),
+            frame_data.height(),
             f32::from(self.crop_percent),
         );
 
         if self.debug {
             let mut image = match correction {
-                Some(transform) if !is_identity(transform) => warp(&frame.data, transform)?,
-                _ => frame.data.as_ref().clone(),
+                Some(transform) if !is_identity(transform) => warp(frame_data, transform)?,
+                _ => frame_data.as_ref().clone(),
             };
             let crop_rect = Rect::at(crop_x as i32, crop_y as i32).of_size(crop_width, crop_height);
             draw_hollow_rect_mut(&mut image, crop_rect, BLUE_PIXEL);
-            frame.data = Arc::new(image);
+            frame.data = ukeela_common::FrameDataBackend::CPU(Arc::new(image));
             return Ok(frame);
         }
 
         let cropped = match correction {
             Some(transform) if !is_identity(transform) => {
-                let warped = warp(&frame.data, transform)?;
+                let warped = warp(frame_data, transform)?;
                 image::imageops::crop_imm(&warped, crop_x, crop_y, crop_width, crop_height)
                     .to_image()
             }
-            _ => image::imageops::crop_imm(
-                frame.data.as_ref(),
-                crop_x,
-                crop_y,
-                crop_width,
-                crop_height,
-            )
-            .to_image(),
+            _ => image::imageops::crop_imm(&**frame_data, crop_x, crop_y, crop_width, crop_height)
+                .to_image(),
         };
 
         frame.width = cropped.width() as usize;
         frame.height = cropped.height() as usize;
-        frame.data = Arc::new(cropped);
+        frame.data = ukeela_common::FrameDataBackend::CPU(Arc::new(cropped));
 
         Ok(frame)
     }

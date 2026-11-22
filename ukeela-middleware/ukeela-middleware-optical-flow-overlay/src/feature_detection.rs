@@ -12,9 +12,7 @@ impl FeaturePointOverlayMiddleware {
     }
 
     pub fn process_frame(&self, mut frame: Frame) -> ProcessResult {
-        let points = &frame.metadata.feature_points;
-
-        if points.is_empty() {
+        if frame.metadata.feature_points.is_empty() {
             return Ok(frame);
         }
 
@@ -22,15 +20,21 @@ impl FeaturePointOverlayMiddleware {
         let height = frame.height;
 
         // Unique ownership of the Arc buffer (Clone-on-Write)
-        if Arc::strong_count(&frame.data) > 1 {
-            let inner = (*frame.data).clone();
-            frame.data = Arc::new(inner);
+        if Arc::strong_count(frame.frame_data_from_cpu()) > 1 {
+            let inner = (**frame.frame_data_from_cpu()).clone();
+            frame.data = ukeela_common::FrameDataBackend::CPU(Arc::new(inner));
         }
 
-        let raw_data =
-            Arc::get_mut(&mut frame.data).expect("Frame data should be uniquely owned after clone");
+        let raw_data = {
+            let frame_data = match &mut frame.data {
+                ukeela_common::FrameDataBackend::CPU(image_buffer) => image_buffer,
+                ukeela_common::FrameDataBackend::GPU(_) => panic!("cant use GPU based frame"),
+            };
 
-        for point in points {
+            Arc::get_mut(frame_data).expect("Frame data should be uniquely owned after clone")
+        };
+
+        for point in &frame.metadata.feature_points {
             let px = point.pt.x.round() as i32;
             let py = point.pt.y.round() as i32;
 

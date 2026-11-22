@@ -169,7 +169,7 @@ fn process_sample(
     let img = image::ImageBuffer::from_raw(width, height, mapped.as_slice().to_vec())
         .context("Buffer size doesn't match caps dimensions")?;
 
-    let frame = Frame::new(img, width as usize, height as usize, format);
+    let frame = Frame::new_cpu(img, width as usize, height as usize, format);
 
     input_handle
         .send_frame_nonblocking(frame)
